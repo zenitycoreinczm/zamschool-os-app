@@ -1,0 +1,48 @@
+"use client";
+
+import { Eye } from "lucide-react";
+import { useTeacherWorkspacePreferences } from "@/lib/teacher-workspace-preferences";
+import { AccountSettingsPage } from "@/components/account/AccountSettingsPage";
+
+export default function TeacherSettingsPage() {
+  const { preferences, updatePreferences } = useTeacherWorkspacePreferences();
+
+  return (
+    <AccountSettingsPage
+      pageTitle="Settings"
+      intro="Manage your teacher workspace preferences, security, and session."
+      accent="amber"
+      preferencesStorageKey="teacher-workspace-settings"
+      sessionTitle="Teacher session"
+      sessionBody="Signed-in teacher account on this device."
+      eyebrow="Teacher workspace"
+    >
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-700">Appearance</h2>
+        <div className="mt-4 space-y-3">
+          <label className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 transition hover:bg-slate-50">
+            <div className="flex items-center gap-3">
+              <Eye className="h-5 w-5 text-slate-400" />
+              <div>
+                <p className="text-sm font-medium text-slate-700">
+                  Compact cards
+                </p>
+                <p className="text-xs text-slate-500">
+                  Use a denser layout for sidebar cards
+                </p>
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={preferences.compactCards}
+              onChange={(e) =>
+                updatePreferences({ compactCards: e.target.checked })
+              }
+              className="h-5 w-5 rounded border-slate-300 text-amber-500 focus:ring-amber-300"
+            />
+          </label>
+        </div>
+      </div>
+    </AccountSettingsPage>
+  );
+}

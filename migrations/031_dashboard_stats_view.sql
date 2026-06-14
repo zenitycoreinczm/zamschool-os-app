@@ -1,0 +1,16 @@
+-- Phase 2: optional read-optimized aggregate for admin dashboards.
+-- Refresh on a schedule (pg_cron) or after bulk user imports — not wired in app yet.
+--
+-- CREATE MATERIALIZED VIEW IF NOT EXISTS school_dashboard_role_stats AS
+-- SELECT
+--   p.school_id,
+--   lower(trim(p.role::text)) AS role_key,
+--   count(*)::int AS profile_count
+-- FROM profiles p
+-- WHERE p.school_id IS NOT NULL
+-- GROUP BY p.school_id, lower(trim(p.role::text));
+--
+-- CREATE UNIQUE INDEX IF NOT EXISTS school_dashboard_role_stats_school_role_idx
+--   ON school_dashboard_role_stats (school_id, role_key);
+--
+-- REFRESH MATERIALIZED VIEW CONCURRENTLY school_dashboard_role_stats;

@@ -1,0 +1,61 @@
+{
+  "name": "update_storage_config",
+  "description": "Update the storage config for a Supabase project.",
+  "inputSchema": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "config": {
+        "type": "object",
+        "properties": {
+          "fileSizeLimit": {
+            "type": "number"
+          },
+          "features": {
+            "type": "object",
+            "properties": {
+              "imageTransformation": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ],
+                "additionalProperties": false
+              },
+              "s3Protocol": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "imageTransformation",
+              "s3Protocol"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "fileSizeLimit",
+          "features"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "config"
+    ],
+    "additionalProperties": false
+  }
+}

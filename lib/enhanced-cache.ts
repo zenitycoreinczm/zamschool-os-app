@@ -1,0 +1,243 @@
+import { NextResponse } from "next/server";
+
+/**
+ * In-memory cache only (per Node process). NOT backed by Redis.
+ * Per free-tier policy: dashboards, profiles, and academic data stay here or in Supabase — not Redis.
+ */
+
+/**
+ * Common cache tags for targeted invalidation.
+ */
+export type CacheTag =
+  | "profile"
+  | "attendance"
+  | "students"
+  | "classes"
+  | "fees"
+  | "announcements"
+  | "dashboard"
+  | "results";
+
+export interface CacheConfig {
+  ttlSeconds: number;
+  staleWhileRevalidate?: number;
+  tags?: CacheTag[];
+}
+
+export const CACHE_CONFIGS = {
+  parent: {
+    dashboard: { ttlSeconds: 60, staleWhileRevalidate: 300 },
+    attendance: { ttlSeconds: 120, staleWhileRevalidate: 600 },
+    progress: { ttlSeconds: 300, staleWhileRevalidate: 900 },
+    fees: { ttlSeconds: 300, staleWhileRevalidate: 900 },
+    children: { ttlSeconds: 600, staleWhileRevalidate: 1800 },
+  },
+  teacher: {
+    classes: { ttlSeconds: 300, staleWhileRevalidate: 900 },
+    assignments: { ttlSeconds: 120, staleWhileRevalidate: 600 },
+    attendance: { ttlSeconds: 60, staleWhileRevalidate: 300 },
+    students: { ttlSeconds: 300, staleWhileRevalidate: 900 },
+  },
+  admin: {
+    users: { ttlSeconds: 60, staleWhileRevalidate: 300 },
+    analytics: { ttlSeconds: 300, staleWhileRevalidate: 900 },
+    reports: { ttlSeconds: 600, staleWhileRevalidate: 1800 },
+    settings: { ttlSeconds: 600, staleWhileRevalidate: 1800 },
+  },
+  shared: {
+    announcements: { ttlSeconds: 60, staleWhileRevalidate: 300 },
+    notices: { ttlSeconds: 120, staleWhileRevalidate: 600 },
+    profile: { ttlSeconds: 300, staleWhileRevalidate: 900 },
+  },
+} as const;
+
+type CacheEntry<T> = { data: T; timestamp: number };
+
+const cacheStore = new Map<string, CacheEntry<unknown>>();
+const staleMarkers = new Map<string, string>();
+
+function cacheGet<T>(key: string): T | null {
+  const entry = cacheStore.get(key);
+  return entry ? (entry as CacheEntry<T>).data : null;
+}
+
+function cacheGetWithMeta<T>(key: string): CacheEntry<T> | null {
+  const entry = cacheStore.get(key);
+  return entry ? (entry as CacheEntry<T>) : null;
+}
+
+function cacheSet<T>(key: string, value: CacheEntry<T>, ttlSeconds: number): void {
+  cacheStore.set(key, value);
+  if (ttlSeconds > 0) {
+    setTimeout(() => {
+      const current = cacheStore.get(key);
+      if (current && Date.now() - current.timestamp >= ttlSeconds * 1000) {
+        cacheStore.delete(key);
+      }
+    }, ttlSeconds * 1000).unref?.();
+  }
+}
+
+function cacheDelete(key: string): void {
+  cacheStore.delete(key);
+  staleMarkers.delete(key);
+}
+
+function cacheClearPattern(pattern: string): void {
+  const needle = pattern.replace(/\*/g, "");
+  for (const key of [...cacheStore.keys(), ...staleMarkers.keys()]) {
+    if (key.includes(needle)) {
+      cacheStore.delete(key);
+      staleMarkers.delete(key);
+    }
+  }
+}
+
+/**
+ * In-memory cache with stale-while-revalidate. Safe for server and client bundles.
+ */
+export async function withCache<T>(
+  key: string,
+  fetchFn: () => Promise<T>,
+  config: CacheConfig
+): Promise<T> {
+  const tagPrefix = config.tags && config.tags.length > 0 ? `${config.tags[0]}:` : "";
+  const cacheKey = `cache:${tagPrefix}${key}`;
+  const staleKey = `stale:${tagPrefix}${key}`;
+
+  try {
+    const cached = cacheGetWithMeta<T>(cacheKey);
+
+    if (cached) {
+      const age = (Date.now() - cached.timestamp) / 1000;
+
+      if (age < config.ttlSeconds) {
+        return cached.data;
+      }
+
+      if (config.staleWhileRevalidate && age < config.ttlSeconds + config.staleWhileRevalidate) {
+        void refreshCache(cacheKey, staleKey, fetchFn, config);
+        return cached.data;
+      }
+    }
+
+    if (staleMarkers.get(staleKey)) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const recheck = cacheGetWithMeta<T>(cacheKey);
+      if (recheck) return recheck.data;
+    }
+
+    const data = await fetchFn();
+    cacheSet(cacheKey, { data, timestamp: Date.now() } satisfies CacheEntry<T>, config.ttlSeconds + (config.staleWhileRevalidate || 0));
+    return data;
+  } catch (error) {
+    console.error("[Cache] Error:", error);
+    return fetchFn();
+  }
+}
+
+async function refreshCache<T>(
+  cacheKey: string,
+  staleKey: string,
+  fetchFn: () => Promise<T>,
+  config: CacheConfig
+): Promise<void> {
+  try {
+    staleMarkers.set(staleKey, "refreshing");
+    const data = await fetchFn();
+    cacheSet(cacheKey, { data, timestamp: Date.now() }, config.ttlSeconds + (config.staleWhileRevalidate || 0));
+    staleMarkers.delete(staleKey);
+  } catch (error) {
+    console.error("[Cache] Background refresh error:", error);
+    staleMarkers.delete(staleKey);
+  }
+}
+
+export async function invalidateCache(pattern: string): Promise<void> {
+  cacheClearPattern(`cache:*${pattern}*`);
+}
+
+export async function invalidateCacheByTags(tags: string[]): Promise<void> {
+  for (const tag of tags) {
+    cacheClearPattern(`cache:*:${tag}:*`);
+    cacheClearPattern(`cache:*:${tag}`);
+  }
+}
+
+export async function invalidateByTag(tag: CacheTag): Promise<void> {
+  cacheClearPattern(`cache:${tag}:`);
+  cacheClearPattern(`stale:${tag}:`);
+}
+
+export function withHttpCache(
+  handler: (req: Request) => Promise<NextResponse>,
+  config: CacheConfig
+) {
+  return async (req: Request): Promise<NextResponse> => {
+    const response = await handler(req);
+
+    const headerValue = config.staleWhileRevalidate
+      ? `private, max-age=${config.ttlSeconds}, stale-while-revalidate=${config.staleWhileRevalidate}`
+      : `private, max-age=${config.ttlSeconds}`;
+
+    response.headers.set("Cache-Control", headerValue);
+    response.headers.set("X-Cache-TTL", String(config.ttlSeconds));
+
+    return response;
+  };
+}
+
+export function generateUserCacheKey(
+  userId: string,
+  role: string,
+  resource: string,
+  params?: Record<string, string>
+): string {
+  const paramStr = params
+    ? ":" +
+      Object.entries(params)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => `${k}=${v}`)
+        .join(":")
+    : "";
+
+  return `${role}:${userId}:${resource}${paramStr}`;
+}
+
+const memoryCache = new Map<string, { data: unknown; expiry: number }>();
+
+export async function withMultiLayerCache<T>(
+  key: string,
+  fetchFn: () => Promise<T>,
+  config: { memoryTTL: number; redisTTL?: number }
+): Promise<T> {
+  const now = Date.now();
+  const ttlSeconds = config.memoryTTL || config.redisTTL || 300;
+
+  const memCached = memoryCache.get(key);
+  if (memCached && memCached.expiry > now) {
+    return memCached.data as T;
+  }
+
+  const storeCached = cacheGet<T>(key);
+  if (storeCached) {
+    memoryCache.set(key, { data: storeCached, expiry: now + ttlSeconds * 1000 });
+    return storeCached;
+  }
+
+  const data = await fetchFn();
+  memoryCache.set(key, { data, expiry: now + ttlSeconds * 1000 });
+  cacheSet(key, { data, timestamp: now }, ttlSeconds);
+  return data;
+}
+
+if (typeof window === "undefined") {
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, value] of memoryCache.entries()) {
+      if (value.expiry <= now) {
+        memoryCache.delete(key);
+      }
+    }
+  }, 60_000).unref?.();
+}

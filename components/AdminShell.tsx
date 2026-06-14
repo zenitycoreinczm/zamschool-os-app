@@ -1,0 +1,531 @@
+"use client";
+
+import Link from "next/link";
+import Image from "next/image";
+import { ProfileAvatarImage } from "@/components/ProfileAvatarImage";
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { supabase } from "@/lib/supabase";
+import { resolveAppWorkspaceHome } from "@/lib/auth-routing";
+import { normalizeRole } from "@/lib/roles";
+import { useWorkspaceContext } from "@/components/WorkspaceContextProvider";
+import { WorkspaceNavMenu } from "@/components/workspace/WorkspaceNavMenu";
+import { WorkspaceLoader } from "@/components/workspace/WorkspaceLoader";
+import { getDisplayInitials } from "@/lib/display-initials";
+import { ws } from "@/lib/workspace-design";
+import { cn } from "@/lib/utils";
+import { performWorkspaceSignOut } from "@/lib/workspace-sign-out";
+import { WorkspaceInboxCenter } from "@/components/inbox/WorkspaceInboxCenter";
+import { WorkspaceGlobalSearch } from "@/components/workspace/WorkspaceGlobalSearch";
+import { navItemsToWorkspacePages, type WorkspaceSearchResult } from "@/lib/workspace-search";
+import {
+  buildRoleMobileDock,
+  getRoleNavItems,
+  roleNavSections,
+  type WorkspaceNavItem,
+  type WorkspaceNavSection,
+  type WorkspaceRoleKey,
+} from "@/lib/workspace-nav";
+import { LogOut, Menu, MoreHorizontal, Settings, Users, X } from "lucide-react";
+
+type WorkspaceRole = WorkspaceRoleKey;
+
+export default function AdminShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const { data: workspace, loading: workspaceLoading } = useWorkspaceContext();
+  const [open, setOpen] = useState(false);
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [polledUnread, setPolledUnread] = useState<{ messages: number; notifications: number } | null>(
+    null
+  );
+
+  const ready = !workspaceLoading && Boolean(workspace);
+  const role = normalizeWorkspaceRole(workspace?.workspaceRole) || "admin";
+  const schoolName = workspace?.schoolName || "Your School";
+  const yearTerm = workspace?.yearTerm || "Academic Context";
+  const displayName = workspace?.displayName || "Your Account";
+  const avatarUrl = workspace?.avatarUrl || null;
+  const avatarInitials = getDisplayInitials({
+    firstName: workspace?.firstName,
+    lastName: workspace?.lastName,
+    displayName,
+    email: workspace?.email,
+  });
+  const workspaceUnread = useMemo(
+    () => ({
+      messages: workspace?.unread?.messages ?? 0,
+      notifications: workspace?.unread?.notifications ?? 0,
+    }),
+    [workspace?.unread?.messages, workspace?.unread?.notifications]
+  );
+  const unreadSummary = polledUnread ?? workspaceUnread;
+
+  const handleUnreadChange = useCallback(
+    (counts: { messages: number; notifications: number }) => setPolledUnread(counts),
+    []
+  );
+
+  const headerActionsRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!workspace) return;
+
+    const redirectPath = resolveWorkspaceRedirect({
+      workspaceRole: workspace.workspaceRole,
+      emailConfirmed: workspace.emailConfirmed,
+      schoolId: workspace.schoolId,
+      pathname,
+    });
+
+    if (redirectPath) {
+      router.replace(redirectPath);
+    }
+  }, [workspace, pathname, router]);
+
+  // Unread counts are managed by WorkspaceInboxCenter via onUnreadChange.
+
+  useEffect(() => {
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (headerActionsRef.current && !headerActionsRef.current.contains(target)) {
+        setOverflowOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, []);
+
+  const activeSet = useMemo(() => new Set([pathname]), [pathname]);
+  const navSections = useMemo(() => roleNavSections[role] ?? roleNavSections.admin, [role]);
+  const navItems = useMemo(() => getRoleNavItems(role), [role]);
+  const mobileDock = useMemo(() => buildRoleMobileDock(role), [role]);
+  const workspaceLabel = getWorkspaceLabel(role);
+  const workspacePageItems = useMemo(
+    () => buildWorkspacePageItems(navItems, unreadSummary),
+    [navItems, unreadSummary]
+  );
+
+  const handleHeaderNavigate = (href: string) => {
+    setOverflowOpen(false);
+    router.push(href);
+  };
+
+  const logout = async () => {
+    if (signingOut) return;
+    setOverflowOpen(false);
+    setSigningOut(true);
+    await performWorkspaceSignOut(supabase);
+  };
+
+  if (signingOut) {
+    return <WorkspaceLoader label="Signing out…" className="fixed inset-0 z-[200]" />;
+  }
+
+  if (!ready) {
+    return <WorkspaceLoader label="Workspace loading" />;
+  }
+
+  return (
+    <div className={cn("zamschool-workspace-shell", ws.canvas)}>
+      {open ? (
+        <button className={cn("fixed inset-0 z-30 lg:hidden", ws.overlay)} onClick={() => setOpen(false)} aria-label="Close sidebar" />
+      ) : null}
+
+      <AdminSidebar
+        open={open}
+        onClose={() => setOpen(false)}
+        role={role}
+        workspaceLabel={workspaceLabel}
+        navSections={navSections}
+        activePaths={activeSet}
+        onNavigate={() => setOpen(false)}
+        onSignOut={logout}
+      />
+
+      <div className="zamschool-workspace-shell__main">
+        <header
+          className={cn(
+            ws.header,
+            "flex items-center justify-between gap-3 border-b border-workspace-border/60 px-4 py-2.5 md:px-6"
+          )}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <button className="lg:hidden p-2 -ml-2 text-slate-600" onClick={() => setOpen(true)}>
+              <Menu className="w-5 h-5" />
+            </button>
+            <div className="hidden lg:block min-w-0">
+              <p className="font-semibold text-slate-900 truncate">{schoolName}</p>
+              <p className="text-xs text-slate-500 truncate">{yearTerm}</p>
+            </div>
+          </div>
+
+          <WorkspaceGlobalSearch
+            pageItems={workspacePageItems}
+            className="hidden min-w-0 flex-1 sm:block sm:max-w-[360px]"
+          />
+
+          <HeaderActions
+            actionsRef={headerActionsRef}
+            unreadSummary={unreadSummary}
+            onUnreadChange={handleUnreadChange}
+            displayName={displayName}
+            workspaceLabel={workspaceLabel}
+            avatarUrl={avatarUrl}
+            avatarInitials={avatarInitials}
+            overflowOpen={overflowOpen}
+            onToggleOverflow={() => setOverflowOpen((current) => !current)}
+            onNavigate={handleHeaderNavigate}
+            onSignOut={logout}
+          />
+        </header>
+
+        <main className={ws.mainScroll}>
+          <div className="relative z-0 zamschool-workspace-main-inner animate-enter-up space-y-5">{children}</div>
+        </main>
+
+        <MobileDock pathname={pathname} items={mobileDock} onClose={() => setOpen(false)} />
+      </div>
+    </div>
+  );
+}
+
+type ShellAction = () => void | Promise<void>;
+
+type AdminSidebarProps = {
+  open: boolean;
+  onClose: () => void;
+  role: WorkspaceRole;
+  workspaceLabel: string;
+  navSections: WorkspaceNavSection[];
+  activePaths: Set<string>;
+  onNavigate: () => void;
+  onSignOut: ShellAction;
+};
+
+function AdminSidebar({
+  open,
+  onClose,
+  role,
+  workspaceLabel,
+  navSections,
+  activePaths,
+  onNavigate,
+  onSignOut,
+}: AdminSidebarProps) {
+  return (
+    <aside
+      className={`zamschool-workspace-shell__sidebar transition-transform duration-250 ${
+        open ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+      }`}
+    >
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="px-3 py-2.5 border-b border-slate-200/80 flex items-center justify-between">
+          <Link href={resolveAppWorkspaceHome(role)} className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full overflow-hidden shadow-sm bg-white">
+              <Image
+                src="/icon.png"
+                alt="ZamSchool OS"
+                width={32}
+                height={32}
+                className="w-full h-full object-cover"
+                priority
+              />
+            </div>
+            <div>
+              <p className="font-semibold text-slate-900 text-sm">ZamSchool OS</p>
+              <p className="text-[10px] text-slate-500">{workspaceLabel}</p>
+            </div>
+          </Link>
+          <button className="lg:hidden p-2 text-slate-500" onClick={onClose}>
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-2 py-3">
+          <WorkspaceNavMenu sections={navSections} activePaths={activePaths} onNavigate={onNavigate} />
+        </div>
+
+        <div className="p-2 border-t border-slate-200/80">
+          <button
+            onClick={onSignOut}
+            className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-500 hover:bg-white hover:text-red-600 transition-colors"
+          >
+            <LogOut className="h-4 w-4" />
+            <span className="font-medium">Sign Out</span>
+          </button>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+type HeaderActionsProps = {
+  actionsRef: React.RefObject<HTMLDivElement | null>;
+  unreadSummary: { messages: number; notifications: number };
+  onUnreadChange: (counts: { messages: number; notifications: number }) => void;
+  displayName: string;
+  workspaceLabel: string;
+  avatarUrl: string | null;
+  avatarInitials: string;
+  overflowOpen: boolean;
+  onToggleOverflow: () => void;
+  onNavigate: (href: string) => void;
+  onSignOut: ShellAction;
+};
+
+function HeaderActions({
+  actionsRef,
+  unreadSummary,
+  onUnreadChange,
+  displayName,
+  workspaceLabel,
+  avatarUrl,
+  avatarInitials,
+  overflowOpen,
+  onToggleOverflow,
+  onNavigate,
+  onSignOut,
+}: HeaderActionsProps) {
+  return (
+    <div ref={actionsRef} className={cn("flex items-center gap-3", ws.headerActions)}>
+      <WorkspaceInboxCenter
+        apiMode="admin"
+        messagesHref="/app/messages"
+        notificationsHref="/app/notifications"
+        initialUnread={unreadSummary}
+        onUnreadChange={onUnreadChange}
+      />
+
+      <div className="hidden sm:flex items-center gap-3 pl-2">
+        <div className="text-right leading-tight">
+          <p className="text-sm font-semibold text-slate-800">{displayName}</p>
+          <p className="text-[11px] text-slate-400">{workspaceLabel}</p>
+        </div>
+        <Link
+          href="/app/profile"
+          className="group relative w-10 h-10 rounded-full overflow-hidden border border-slate-200 bg-slate-100 text-slate-900 grid place-items-center text-sm font-semibold shadow-sm transition-all hover:ring-2 hover:ring-sky-100"
+        >
+          {avatarUrl ? (
+            <ProfileAvatarImage
+              src={avatarUrl}
+              alt={displayName}
+              width={40}
+              height={40}
+              className="h-full w-full object-cover"
+              fallback={avatarInitials}
+            />
+          ) : (
+            avatarInitials
+          )}
+        </Link>
+      </div>
+
+      <button
+        type="button"
+        onClick={onToggleOverflow}
+        className="hidden sm:grid h-10 w-10 place-items-center rounded-full border border-slate-200 bg-white text-slate-400 hover:bg-slate-50"
+      >
+        <MoreHorizontal className="w-4 h-4" />
+      </button>
+
+      {overflowOpen ? (
+        <div
+          className={cn(
+            "absolute right-0 top-12 w-56 rounded-3xl border border-slate-200 bg-white p-2 shadow-xl",
+            ws.popover
+          )}
+        >
+          <button
+            type="button"
+            onClick={() => onNavigate("/app/profile")}
+            className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm text-slate-700 hover:bg-slate-50"
+          >
+            <Users className="h-4 w-4 text-slate-400" />
+            Profile
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigate("/app/settings")}
+            className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm text-slate-700 hover:bg-slate-50"
+          >
+            <Settings className="h-4 w-4 text-slate-400" />
+            Settings
+          </button>
+          <button
+            type="button"
+            onClick={onSignOut}
+            className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm text-rose-600 hover:bg-rose-50"
+          >
+            <LogOut className="h-4 w-4" />
+            Sign Out
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+type MobileDockProps = {
+  pathname: string;
+  items: WorkspaceNavItem[];
+  onClose: () => void;
+};
+
+function MobileDock({ pathname, items, onClose }: MobileDockProps) {
+  return (
+    <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-2 py-1 z-30">
+      <div className="grid grid-cols-5 gap-1">
+        {items.map((item) => {
+          const active = pathname === item.href;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={onClose}
+              className={`flex flex-col items-center justify-center py-2 rounded-lg ${
+                active ? "text-sky-600 bg-sky-50" : "text-slate-500"
+              }`}
+            >
+              <item.icon className="w-4.5 h-4.5" />
+              <span className="text-[10px] mt-1 font-medium">{item.label}</span>
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
+function formatUnreadBadgeCount(count: number) {
+  if (!count || count < 1) {
+    return "0";
+  }
+
+  return count > 99 ? "99+" : String(count);
+}
+
+function buildWorkspacePageItems(
+  navItems: WorkspaceNavItem[],
+  unreadSummary: { messages: number; notifications: number }
+): WorkspaceSearchResult[] {
+  return [
+    ...navItemsToWorkspacePages(navItems),
+    {
+      id: "page:/app/messages-unread",
+      kind: "page" as const,
+      label: "Unread Messages",
+      hint: `${formatUnreadBadgeCount(unreadSummary.messages)} unread`,
+      href: "/app/messages",
+    },
+    {
+      id: "page:/app/notifications-unread",
+      kind: "page" as const,
+      label: "Unread Notifications",
+      hint: `${formatUnreadBadgeCount(unreadSummary.notifications)} unread`,
+      href: "/app/notifications",
+    },
+    {
+      id: "page:/app/profile",
+      kind: "page" as const,
+      label: "Profile",
+      hint: "Your account settings",
+      href: "/app/profile",
+    },
+  ];
+}
+
+function normalizeWorkspaceRole(role: string | null | undefined): WorkspaceRole | null {
+  const normalized = normalizeRole(role);
+  if (!normalized) return null;
+  const stored = normalized.toLowerCase() as WorkspaceRole;
+  return roleNavSections[stored] ? stored : null;
+}
+
+type WorkspaceRedirectInput = {
+  workspaceRole: string | null | undefined;
+  emailConfirmed: boolean | null | undefined;
+  schoolId: string | null | undefined;
+  pathname: string;
+};
+
+function resolveWorkspaceRedirect({
+  workspaceRole,
+  emailConfirmed,
+  schoolId,
+  pathname,
+}: WorkspaceRedirectInput): string | null {
+  const nextRole = normalizeWorkspaceRole(workspaceRole);
+  if (!nextRole) {
+    return "/login?error=web_access_restricted";
+  }
+
+  if (!emailConfirmed) {
+    return "/verify-email";
+  }
+
+  if (nextRole === "admin" && pathname.startsWith("/app/principal")) {
+    return "/app/dashboard";
+  }
+  if (nextRole === "principal" && pathname === "/app/dashboard") {
+    return "/app/principal";
+  }
+  if (nextRole === "deputy_head" && pathname === "/app/dashboard") {
+    return "/app/deputy-head";
+  }
+  if (nextRole === "teacher" && (pathname.startsWith("/app/admin") || pathname === "/app/dashboard")) {
+    return resolveAppWorkspaceHome(nextRole);
+  }
+  if (nextRole !== "teacher" && pathname === "/app/teacher") {
+    return resolveAppWorkspaceHome(nextRole);
+  }
+  if (nextRole === "student" && pathname === "/parent") {
+    return resolveAppWorkspaceHome(nextRole);
+  }
+  if (nextRole === "parent" && pathname === "/student") {
+    return resolveAppWorkspaceHome(nextRole);
+  }
+
+  if (!schoolId && ["admin", "principal"].includes(nextRole) && pathname !== "/app/admin/school") {
+    return "/app/admin/school";
+  }
+
+  return null;
+}
+
+function getWorkspaceLabel(role: WorkspaceRole) {
+  switch (role) {
+    case "principal":
+      return "Head Teacher workspace";
+    case "deputy_head":
+      return "Deputy Head Workspace";
+    case "bursar":
+      return "Bursar Workspace";
+    case "guidance_office":
+      return "Guidance Office Workspace";
+    case "academic_admin":
+      return "Academic Admin Workspace";
+    case "hr_admin":
+      return "HR Admin Workspace";
+    case "ict_admin":
+      return "ICT Admin Workspace";
+    case "discipline_admin":
+      return "Discipline Workspace";
+    case "admin":
+      return "School Administrator Workspace";
+    case "super_admin":
+      return "Super Admin Workspace";
+    case "teacher":
+      return "Teacher Workspace";
+    case "payments":
+      return "Payments Workspace";
+    case "student":
+      return "Student Workspace";
+    case "parent":
+      return "Parent Workspace";
+    default:
+      return "School Workspace";
+  }
+}

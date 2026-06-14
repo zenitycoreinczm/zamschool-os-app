@@ -1,0 +1,58 @@
+import { NextResponse } from "next/server";
+import { requireSuperAdminContext } from "@/lib/server-auth";
+import { supabaseAdmin } from "@/lib/supabase";
+import { safeErrorMessage } from "@/lib/server-guards";
+
+export async function GET(req: Request) {
+  try {
+    const access = await requireSuperAdminContext(req);
+    if (!access.ok) return access.response;
+
+    const { searchParams } = new URL(req.url);
+    const status = searchParams.get("status"); // "active" | "used" | "expired" | "all"
+    const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 200);
+    const offset = parseInt(searchParams.get("offset") || "0");
+    const search = searchParams.get("search");
+
+    let query = supabaseAdmin
+      .from("access_codes")
+      .select("code, created_at, expires_at, used_at, used_by_email, max_uses, use_count, province, district, school_type, ownership_type, notes, created_by", { count: "exact" })
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    const now = new Date().toISOString();
+
+    if (status === "active") {
+      query = query.is("used_at", null).gt("expires_at", now);
+    } else if (status === "used") {
+      query = query.not("used_at", "is", null);
+    } else if (status === "expired") {
+      query = query.is("used_at", null).lt("expires_at", now);
+    }
+
+    if (search) {
+      query = query.or(`code.eq.${search},used_by_email.ilike.%${search}%`);
+    }
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      console.error("[list-access-codes] DB error:", error);
+      return NextResponse.json({ error: "Failed to list access codes." }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: data || [],
+      total: count ?? 0,
+      offset,
+      limit,
+    });
+  } catch (err: unknown) {
+    console.error("[list-access-codes] Error:", safeErrorMessage(err, "Unknown error"));
+    return NextResponse.json(
+      { error: safeErrorMessage(err, "Failed to list access codes.") },
+      { status: 500 },
+    );
+  }
+}

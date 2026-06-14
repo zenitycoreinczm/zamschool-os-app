@@ -1,0 +1,5 @@
+ALTER TABLE profiles
+ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE;
+
+ALTER TABLE profiles
+ADD COLUMN IF NOT EXISTS temporary_password_issued_at TIMESTAMP WITH TIME ZONE;

@@ -1,0 +1,1591 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZamSchool OS — Developer & Multi-Tenant User Guide</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f5f7ff',
+              100: '#ebf0ff',
+              200: '#d6e0ff',
+              300: '#b3c5ff',
+              400: '#8aa1ff',
+              500: '#636af1',
+              600: '#4f4be5',
+              700: '#3f38ca',
+              800: '#352ea3',
+              900: '#2e2881',
+              950: '#0b0f19',
+            },
+            slate: {
+              950: '#060814',
+              900: '#0b0f19',
+              800: '#1e293b',
+              700: '#334155',
+              600: '#475569',
+              400: '#94a3b8',
+              300: '#cbd5e1',
+              100: '#f1f5f9',
+            },
+            neon: {
+              blue: '#06b6d4',
+              indigo: '#6366f1',
+              pink: '#ec4899',
+              green: '#10b981',
+              amber: '#f59e0b',
+              red: '#ef4444'
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            display: ['Space Grotesk', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Google Fonts (Inter & Space Grotesk) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome 6 CDN for Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <style>
+    /* Premium custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #060814;
+    }
+    .light ::-webkit-scrollbar-track {
+      background: #f8fafc;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1e293b;
+      border-radius: 9999px;
+    }
+    .light ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #6366f1;
+    }
+
+    /* Active navigation indicator */
+    .active-nav-link {
+      background: linear-gradient(90deg, rgba(99, 102, 241, 0.15) 0%, rgba(99, 102, 241, 0) 100%);
+      border-left: 3px solid #6366f1;
+      color: #818cf8 !important;
+    }
+    .light .active-nav-link {
+      background: linear-gradient(90deg, rgba(99, 102, 241, 0.08) 0%, rgba(99, 102, 241, 0) 100%);
+      border-left: 3px solid #4f46e5;
+      color: #4f46e5 !important;
+    }
+
+    /* Custom Glassmorphic Backdrop */
+    .glass {
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+  </style>
+
+  <!-- Load Mermaid.js via CDN as an ES Module -->
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'dark',
+      securityLevel: 'loose',
+      flowchart: { useWidth: true, htmlLabels: true },
+      themeVariables: {
+        background: '#0b0f19',
+        primaryColor: '#1e293b',
+        primaryTextColor: '#f1f5f9',
+        lineColor: '#6366f1',
+        secondaryColor: '#0f172a'
+      }
+    });
+    window.mermaid = mermaid;
+  </script>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans transition-colors duration-300 dark:bg-slate-950 dark:text-slate-100 light:bg-slate-50 light:text-slate-900">
+
+  <!-- Mobile Floating Nav Bar -->
+  <div class="lg:hidden flex items-center justify-between bg-slate-900/90 dark:bg-slate-900/90 light:bg-white/90 glass p-4 sticky top-4 mx-4 rounded-2xl border border-slate-800 dark:border-slate-800 light:border-slate-200 z-50 shadow-xl">
+    <div class="flex items-center gap-2">
+      <div class="h-8 w-8 rounded-lg bg-gradient-to-tr from-brand-600 to-neon-blue flex items-center justify-center text-white"><i class="fa-solid fa-graduation-cap"></i></div>
+      <span class="font-display font-bold text-lg text-white light:text-slate-900">ZamSchool OS</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <button onclick="toggleTheme()" class="p-2 bg-slate-950 dark:bg-slate-950 light:bg-slate-100 rounded-xl text-slate-400 border border-slate-800 dark:border-slate-800 light:border-slate-200"><i class="fa-solid fa-sun hidden dark:inline"></i><i class="fa-solid fa-moon inline dark:hidden"></i></button>
+      <button onclick="toggleMobileSidebar()" class="p-2 bg-slate-950 dark:bg-slate-950 light:bg-slate-100 rounded-xl text-slate-400 border border-slate-800 dark:border-slate-800 light:border-slate-200"><i class="fa-solid fa-bars"></i></button>
+    </div>
+  </div>
+
+  <div class="flex min-h-screen">
+    
+    <!-- LEFT SIDEBAR: Table of Contents & Global Filters -->
+    <aside id="sidebar" class="w-80 h-screen sticky top-0 hidden lg:flex flex-col justify-between border-r border-slate-800 dark:border-slate-800 light:border-slate-200 bg-slate-900/40 dark:bg-slate-900/40 light:bg-white/80 glass px-6 py-8 z-40">
+      <div>
+        <!-- Logo Branding -->
+        <div class="flex items-center gap-3 mb-6">
+          <div class="h-10 w-10 rounded-xl bg-gradient-to-tr from-brand-600 to-neon-blue flex items-center justify-center text-white shadow-lg shadow-brand-500/25">
+            <i class="fa-solid fa-graduation-cap text-lg"></i>
+          </div>
+          <div>
+            <h1 class="font-display font-bold text-lg tracking-wide bg-gradient-to-r from-white to-slate-400 dark:from-white dark:to-slate-400 light:from-slate-900 light:to-slate-600 bg-clip-text text-transparent">ZamSchool OS</h1>
+            <span class="text-[9px] uppercase font-bold tracking-widest text-brand-400 bg-brand-500/10 px-2 py-0.5 rounded-full border border-brand-500/20">System Guide</span>
+          </div>
+        </div>
+
+        <!-- Smart Portal Search -->
+        <div class="relative mb-6">
+          <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3.5 text-slate-400 text-xs"></i>
+          <input 
+            type="text" 
+            id="global-search" 
+            placeholder="Search documentation..." 
+            class="w-full bg-slate-950/80 dark:bg-slate-950/80 light:bg-slate-100/80 text-xs pl-10 pr-8 py-3 rounded-xl border border-slate-800 dark:border-slate-800 light:border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all text-slate-100 light:text-slate-900"
+            oninput="handleGlobalSearch(this.value)"
+          >
+          <button id="clear-search-btn" onclick="clearGlobalSearch()" class="hidden absolute right-3 top-3 text-slate-400 hover:text-white dark:hover:text-white light:hover:text-slate-900">
+            <i class="fa-solid fa-circle-xmark"></i>
+          </button>
+        </div>
+
+        <!-- Sidebar Navigation Tree -->
+        <nav class="space-y-1 overflow-y-auto max-h-[55vh]" id="toc-nav">
+          <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2 px-3">Table of Contents</p>
+          <a href="#charter" class="toc-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs text-slate-400 hover:text-white dark:hover:text-white light:hover:text-slate-900 transition-all"><i class="fa-solid fa-chart-line w-4"></i> 1. Architectural Charter</a>
+          <a href="#roles-grid" class="toc-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs text-slate-400 hover:text-white dark:hover:text-white light:hover:text-slate-900 transition-all"><i class="fa-solid fa-users-gear w-4"></i> 2. The 14 Roles Grid</a>
+          <a href="#interactive-role-selector" class="toc-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs text-slate-400 hover:text-white dark:hover:text-white light:hover:text-slate-900 transition-all"><i class="fa-solid fa-gamepad w-4"></i> 3. Interactive Journeys</a>
+          <a href="#onboarding-runbook" class="toc-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs text-slate-400 hover:text-white dark:hover:text-white light:hover:text-slate-900 transition-all"><i class="fa-solid fa-clipboard-list-check w-4"></i> 4. Setup Runbook</a>
+          <a href="#rls-tenant" class="toc-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs text-slate-400 hover:text-white dark:hover:text-white light:hover:text-slate-900 transition-all"><i class="fa-solid fa-user-lock w-4"></i> 5. Multi-Tenant RLS</a>
+          <a href="#db-schema" class="toc-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs text-slate-400 hover:text-white dark:hover:text-white light:hover:text-slate-900 transition-all"><i class="fa-solid fa-database w-4"></i> 6. Database Schema</a>
+          <a href="#r2-storage" class="toc-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs text-slate-400 hover:text-white dark:hover:text-white light:hover:text-slate-900 transition-all"><i class="fa-solid fa-cloud-arrow-up w-4"></i> 7. Cloudflare R2 Uploads</a>
+          <a href="#caching-stack" class="toc-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs text-slate-400 hover:text-white dark:hover:text-white light:hover:text-slate-900 transition-all"><i class="fa-solid fa-bolt w-4"></i> 8. Caching & Latency</a>
+          <a href="#sim-widget" class="toc-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs text-slate-400 hover:text-white dark:hover:text-white light:hover:text-slate-900 transition-all"><i class="fa-solid fa-tower-broadcast w-4"></i> 9. Offline Simulator</a>
+          <a href="#api-cards" class="toc-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs text-slate-400 hover:text-white dark:hover:text-white light:hover:text-slate-900 transition-all"><i class="fa-solid fa-network-wired w-4"></i> 10. Searchable API Explorer</a>
+        </nav>
+      </div>
+
+      <!-- Sidebar Footer Controls -->
+      <div class="border-t border-slate-800 dark:border-slate-800 light:border-slate-200 pt-6 space-y-4">
+        <div class="flex items-center justify-between">
+          <span class="text-xs text-slate-400">Appearance Mode</span>
+          <button 
+            onclick="toggleTheme()" 
+            class="h-9 w-9 bg-slate-950 dark:bg-slate-950 light:bg-slate-100 rounded-lg flex items-center justify-center text-slate-400 hover:text-brand-400 hover:bg-slate-800/40 border border-slate-800 dark:border-slate-800 light:border-slate-300 transition-all"
+            title="Toggle Light/Dark Theme"
+          >
+            <i class="fa-solid fa-sun hidden dark:inline"></i>
+            <i class="fa-solid fa-moon inline dark:hidden"></i>
+          </button>
+        </div>
+        <p class="text-[10px] text-slate-500 leading-relaxed">
+          ZamSchool OS Production Documentation. Prepared for Mobile, Frontend & Platform Integration Teams. Confidential.
+        </p>
+      </div>
+    </aside>
+
+    <!-- RIGHT MAIN CONTENT: Reading Viewport -->
+    <main class="flex-1 min-h-screen overflow-y-auto px-4 py-6 md:px-12 md:py-12 max-w-7xl mx-auto space-y-16">
+      
+      <!-- Welcome Premium Card Header -->
+      <header class="relative overflow-hidden bg-gradient-to-tr from-slate-900 via-slate-900 to-brand-950/30 dark:from-slate-900 dark:to-brand-950/30 light:from-white light:to-slate-100 p-8 md:p-12 rounded-3xl border border-slate-800 dark:border-slate-800 light:border-slate-200 shadow-2xl">
+        <div class="absolute -top-12 -right-12 w-48 h-48 bg-brand-500/10 rounded-full blur-3xl"></div>
+        <div class="absolute -bottom-12 -left-12 w-48 h-48 bg-neon-blue/10 rounded-full blur-3xl"></div>
+        
+        <div class="max-w-4xl space-y-6">
+          <div>
+            <div class="flex items-center gap-2 text-brand-400 font-semibold text-xs tracking-wider uppercase mb-2">
+              <span class="h-2 w-2 rounded-full bg-brand-500 animate-ping"></span> Integration Standard v1.4.0
+            </div>
+            <h2 class="font-display font-bold text-3xl md:text-5xl tracking-tight bg-gradient-to-r from-white via-slate-300 to-brand-300 bg-clip-text text-transparent dark:from-white dark:to-brand-300 light:from-slate-900 light:to-slate-600 mb-3">
+              ZamSchool OS User & Developer Guide
+            </h2>
+            <p class="text-sm md:text-base text-slate-400 dark:text-slate-400 light:text-slate-600 leading-relaxed">
+              This interactive dashboard maps the operational, structural, and security layers of the ZamSchool web platform to facilitate flawless cross-platform parity for mobile application developers. Follow the live database models, multi-tenant row-level authorization flows, CDN storage structures, step-by-step setup runbooks, and explore key system APIs.
+            </p>
+          </div>
+
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 pt-6 border-t border-slate-800 dark:border-slate-800 light:border-slate-200 text-xs">
+            <div class="p-3 bg-slate-950/50 dark:bg-slate-950/50 light:bg-slate-200/50 rounded-xl">
+              <p class="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Data Isolation</p>
+              <p class="text-sm font-semibold text-neon-blue"><i class="fa-solid fa-fingerprint mr-1"></i> school_id RLS</p>
+            </div>
+            <div class="p-3 bg-slate-950/50 dark:bg-slate-950/50 light:bg-slate-200/50 rounded-xl">
+              <p class="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Active Roles</p>
+              <p class="text-sm font-semibold text-neon-indigo"><i class="fa-solid fa-users mr-1"></i> 14 System Roles</p>
+            </div>
+            <div class="p-3 bg-slate-950/50 dark:bg-slate-950/50 light:bg-slate-200/50 rounded-xl">
+              <p class="text-slate-500 font-bold uppercase tracking-wider text-[10px]">File Delivery</p>
+              <p class="text-sm font-semibold text-neon-pink"><i class="fa-solid fa-cloud mr-1"></i> Cloudflare R2</p>
+            </div>
+            <div class="p-3 bg-slate-950/50 dark:bg-slate-950/50 light:bg-slate-200/50 rounded-xl">
+              <p class="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Sync Status</p>
+              <p class="text-sm font-semibold text-neon-green"><i class="fa-solid fa-wifi mr-1"></i> Live Realtime</p>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Section 1: Architectural Charter & Traffic Profiles -->
+      <section id="charter" class="space-y-6">
+        <div class="flex items-center gap-3">
+          <span class="h-8 w-8 rounded-lg bg-brand-500/10 text-brand-400 flex items-center justify-center font-bold text-sm">1</span>
+          <h3 class="font-display font-bold text-2xl tracking-tight text-white dark:text-white light:text-slate-900">Architectural Charter</h3>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div class="space-y-4">
+            <h4 class="font-semibold text-lg text-neon-indigo"><i class="fa-solid fa-chart-pie mr-2"></i>The 80/20 Reader vs Writer Axiom</h4>
+            <p class="text-sm text-slate-400 dark:text-slate-400 light:text-slate-600 leading-relaxed">
+              ZamSchool OS functions on an asymmetric load distribution model. Over <strong>80% of platform traffic</strong> is read-only. Parents, students, and advisors continuously consume timetable data, school announcements, attendance status checks, and report cards. Only <strong>20% of traffic</strong> consists of active data mutations (teachers marking attendance, administrators adjusting classes, or bursars posting billing receipts).
+            </p>
+            <p class="text-sm text-slate-400 dark:text-slate-400 light:text-slate-600 leading-relaxed">
+              Because of this massive imbalance, the platform utilizes strict write constraints while caching read structures. Write pipelines are protected by granular Postgres policies, whereas read endpoints are designed to bypass heavy calculations by leveraging localized cache structures, Redis buffers, and memory caches.
+            </p>
+            
+            <div class="p-4 bg-slate-900 dark:bg-slate-900 light:bg-white rounded-xl border border-slate-800 dark:border-slate-800 light:border-slate-200">
+              <h5 class="text-xs uppercase tracking-wider font-bold text-white dark:text-white light:text-slate-900 mb-2"><i class="fa-solid fa-bolt text-neon-amber mr-2"></i>Bursty School Traffic Profiles</h5>
+              <ul class="text-xs text-slate-400 dark:text-slate-400 light:text-slate-500 space-y-2 list-disc list-inside">
+                <li><strong class="text-white dark:text-white light:text-slate-800">Morning Attendance Rush (07:30 - 08:30 AM)</strong>: Massive concurrent bursts of teachers logging roll calls.</li>
+                <li><strong class="text-white dark:text-white light:text-slate-800">Term Result Releases (End of Term)</strong>: Thousands of families fetching report cards simultaneously.</li>
+                <li><strong class="text-white dark:text-white light:text-slate-800">Bursty Announcements</strong>: Emergency updates sent via background queues to protect real-time threads.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="space-y-4">
+            <h4 class="font-semibold text-lg text-neon-blue"><i class="fa-solid fa-bullhorn mr-2"></i>The "Publish Once, Read Many" Philosophy</h4>
+            <p class="text-sm text-slate-400 dark:text-slate-400 light:text-slate-600 leading-relaxed">
+              We separate draft academic records from public records. Teachers continuously key student grades in an unpublished draft state. Once complete and approved, a single command switches a boolean publish flag, triggering Supabase Realtime alerts that instantly update active parent and student portal feeds.
+            </p>
+
+            <h5 class="text-xs uppercase font-bold text-white dark:text-white light:text-slate-800 tracking-wider">Notification & Realtime Caching Pipeline</h5>
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 overflow-x-auto">
+              <pre class="mermaid text-xs flex justify-center">
+flowchart TD
+  A[Domain Write Event e.g. Mark Attendance] --> B[Record Inserted into Postgres Table]
+  B --> C[Postgres Trigger inserts notifications table row]
+  C --> D[Supabase Realtime Engine listens on WAL replication]
+  D --> E[Broadcast WebSocket payload sent to authorized sessions]
+  E --> F[Client UI receives event, increments unread indicator]
+  B --> G[Bust Redis & In-Memory profile caches]
+              </pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 2: Detailed 14 Roles Grid -->
+      <section id="roles-grid" class="space-y-6">
+        <div class="flex items-center gap-3">
+          <span class="h-8 w-8 rounded-lg bg-brand-500/10 text-brand-400 flex items-center justify-center font-bold text-sm">2</span>
+          <h3 class="font-display font-bold text-2xl tracking-tight text-white dark:text-white light:text-slate-900">The 14 System Roles</h3>
+        </div>
+
+        <p class="text-sm text-slate-400 dark:text-slate-400 light:text-slate-600 max-w-3xl">
+          ZamSchool OS is driven by 14 distinct roles mapped to physical school personas. Every account possesses a single `profiles.role` identifier that is evaluated by authorization middleware.
+        </p>
+
+        <!-- Stored Helpers -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="p-4 bg-slate-900 dark:bg-slate-900 light:bg-white border border-slate-800 dark:border-slate-800 light:border-slate-200 rounded-xl">
+            <h5 class="text-xs font-bold text-white dark:text-white light:text-slate-900 uppercase mb-2"><i class="fa-solid fa-user-shield text-neon-blue mr-2"></i>isAdminRole()</h5>
+            <p class="text-xs text-slate-400 dark:text-slate-400 light:text-slate-500">
+              Evaluates if the actor handles core school resources. Returns true if the user matches one of the administrative variants:
+            </p>
+            <code class="block mt-2 p-1.5 bg-slate-950 dark:bg-slate-950 light:bg-slate-100 rounded text-[10px] text-brand-400 font-mono">
+role IN ('admin', 'principal', 'deputy_head', 'academic_admin', 'hr_admin', 'ict_admin', 'discipline_admin')
+            </code>
+          </div>
+
+          <div class="p-4 bg-slate-900 dark:bg-slate-900 light:bg-white border border-slate-800 dark:border-slate-800 light:border-slate-200 rounded-xl">
+            <h5 class="text-xs font-bold text-white dark:text-white light:text-slate-900 uppercase mb-2"><i class="fa-solid fa-fingerprint text-neon-pink mr-2"></i>isSensitiveRole()</h5>
+            <p class="text-xs text-slate-400 dark:text-slate-400 light:text-slate-500">
+              Limits super-user features (MFA adjustments, database preflights, custom domains) only to critical operations roles:
+            </p>
+            <code class="block mt-2 p-1.5 bg-slate-950 dark:bg-slate-950 light:bg-slate-100 rounded text-[10px] text-neon-pink font-mono">
+role IN ('super_admin', 'principal', 'bursar', 'ict_admin')
+            </code>
+          </div>
+
+          <div class="p-4 bg-slate-900 dark:bg-slate-900 light:bg-white border border-slate-800 dark:border-slate-800 light:border-slate-200 rounded-xl">
+            <h5 class="text-xs font-bold text-white dark:text-white light:text-slate-900 uppercase mb-2"><i class="fa-solid fa-dollar-sign text-neon-amber mr-2"></i>isFinancialRole()</h5>
+            <p class="text-xs text-slate-400 dark:text-slate-400 light:text-slate-500">
+              Directs billing dashboard access. True only for staff roles with rights to fee catalogs and student payment entries:
+            </p>
+            <code class="block mt-2 p-1.5 bg-slate-950 dark:bg-slate-950 light:bg-slate-100 rounded text-[10px] text-neon-amber font-mono">
+role IN ('bursar', 'payments')
+            </code>
+          </div>
+        </div>
+
+        <!-- Comprehensive 14 Roles Table -->
+        <div class="overflow-x-auto rounded-xl border border-slate-800 dark:border-slate-800 light:border-slate-200">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead class="bg-slate-900 dark:bg-slate-900 light:bg-slate-100 text-slate-400 uppercase font-bold">
+              <tr>
+                <th class="p-3 border-b border-slate-800 dark:border-slate-800 light:border-slate-200">Stored DB Value</th>
+                <th class="p-3 border-b border-slate-800 dark:border-slate-800 light:border-slate-200">Display Label</th>
+                <th class="p-3 border-b border-slate-800 dark:border-slate-800 light:border-slate-200">Designated Route Prefix</th>
+                <th class="p-3 border-b border-slate-800 dark:border-slate-800 light:border-slate-200">Scope Overview</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800 dark:divide-slate-800 light:divide-slate-200 bg-slate-950/30 dark:bg-slate-950/30 light:bg-white text-slate-300 light:text-slate-700">
+              <tr>
+                <td class="p-3 font-mono text-white light:text-slate-900 font-bold">admin</td>
+                <td class="p-3">School Administrator</td>
+                <td class="p-3"><code class="text-neon-indigo">/app/*</code></td>
+                <td class="p-3">System defaults, settings, class streams, subject lists configuration.</td>
+              </tr>
+              <tr>
+                <td class="p-3 font-mono text-white light:text-slate-900 font-bold">teacher</td>
+                <td class="p-3">Teacher</td>
+                <td class="p-3"><code class="text-brand-400">/teacher/*</code></td>
+                <td class="p-3">Grades, homework assignments, class attendance tracking.</td>
+              </tr>
+              <tr>
+                <td class="p-3 font-mono text-white light:text-slate-900 font-bold">student</td>
+                <td class="p-3">Student</td>
+                <td class="p-3"><code class="text-brand-400">/student/*</code></td>
+                <td class="p-3">Dashboard view of homework, results, and timetables.</td>
+              </tr>
+              <tr>
+                <td class="p-3 font-mono text-white light:text-slate-900 font-bold">parent</td>
+                <td class="p-3">Parent / Guardian</td>
+                <td class="p-3"><code class="text-brand-400">/parent/*</code></td>
+                <td class="p-3">Track progress of linked children, billing logs.</td>
+              </tr>
+              <tr>
+                <td class="p-3 font-mono text-white light:text-slate-900 font-bold">principal</td>
+                <td class="p-3">Head Teacher</td>
+                <td class="p-3"><code class="text-neon-indigo">/app/*</code></td>
+                <td class="p-3">Broad dashboard view, result publishing approval, announcements.</td>
+              </tr>
+              <tr>
+                <td class="p-3 font-mono text-white light:text-slate-900 font-bold">deputy_head</td>
+                <td class="p-3">Deputy Head Teacher</td>
+                <td class="p-3"><code class="text-neon-indigo">/app/*</code></td>
+                <td class="p-3">Academics tracking, student discipline log support.</td>
+              </tr>
+              <tr>
+                <td class="p-3 font-mono text-white light:text-slate-900 font-bold">bursar</td>
+                <td class="p-3">Bursar</td>
+                <td class="p-3"><code class="text-neon-indigo">/app/*</code></td>
+                <td class="p-3">Creates fee templates, billing runs, invoices.</td>
+              </tr>
+              <tr>
+                <td class="p-3 font-mono text-white light:text-slate-900 font-bold">payments</td>
+                <td class="p-3">Payments Officer</td>
+                <td class="p-3"><code class="text-neon-indigo">/app/*</code></td>
+                <td class="p-3">Accepts student fee payments, prints billing summaries.</td>
+              </tr>
+              <tr>
+                <td class="p-3 font-mono text-white light:text-slate-900 font-bold">guidance_office</td>
+                <td class="p-3">Guidance Office</td>
+                <td class="p-3"><code class="text-neon-indigo">/app/*</code></td>
+                <td class="p-3">Logs guidance counselling cases, attendance triggers.</td>
+              </tr>
+              <tr>
+                <td class="p-3 font-mono text-white light:text-slate-900 font-bold">academic_admin</td>
+                <td class="p-3">Academic Administrator</td>
+                <td class="p-3"><code class="text-neon-indigo">/app/*</code></td>
+                <td class="p-3">Curriculum templates, stream definitions, lesson timings.</td>
+              </tr>
+              <tr>
+                <td class="p-3 font-mono text-white light:text-slate-900 font-bold">hr_admin</td>
+                <td class="p-3">HR Administrator</td>
+                <td class="p-3"><code class="text-neon-indigo">/app/*</code></td>
+                <td class="p-3">Teacher directories, emergency records.</td>
+              </tr>
+              <tr>
+                <td class="p-3 font-mono text-white light:text-slate-900 font-bold">ict_admin</td>
+                <td class="p-3">ICT Administrator</td>
+                <td class="p-3"><code class="text-neon-indigo">/app/*</code></td>
+                <td class="p-3">System preflight, email structures, school codes settings.</td>
+              </tr>
+              <tr>
+                <td class="p-3 font-mono text-white light:text-slate-900 font-bold">discipline_admin</td>
+                <td class="p-3">Discipline Administrator</td>
+                <td class="p-3"><code class="text-neon-indigo">/app/*</code></td>
+                <td class="p-3">Attendance audits, discipline incident reporting.</td>
+              </tr>
+              <tr>
+                <td class="p-3 font-mono text-white light:text-slate-900 font-bold">super_admin</td>
+                <td class="p-3">Platform Super Admin</td>
+                <td class="p-3"><code class="text-neon-pink">/app/super-admin</code></td>
+                <td class="p-3">Platform-wide code generation, new school registrations.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Section 3: Interactive Role Journeys -->
+      <section id="interactive-role-selector" class="space-y-6">
+        <div class="flex items-center gap-3">
+          <span class="h-8 w-8 rounded-lg bg-brand-500/10 text-brand-400 flex items-center justify-center font-bold text-sm">3</span>
+          <h3 class="font-display font-bold text-2xl tracking-tight text-white dark:text-white light:text-slate-900">Interactive Role Journeys</h3>
+        </div>
+
+        <p class="text-sm text-slate-400 dark:text-slate-400 light:text-slate-600 max-w-3xl">
+          Click any role tab to explore their default page navigation menu, typical user journeys, their specific write tasks, their API usage, and a visual flowchart.
+        </p>
+
+        <!-- Tabs Headers Grid -->
+        <div class="flex flex-wrap gap-2 border-b border-slate-800 dark:border-slate-800 light:border-slate-200 pb-2">
+          <button onclick="changeActiveJourney('student')" id="role-tab-student" class="journey-tab px-4 py-2.5 rounded-lg text-xs font-semibold text-neon-blue bg-neon-blue/10 border-b-2 border-neon-blue transition-all">
+            <i class="fa-solid fa-graduation-cap mr-1.5"></i> Student
+          </button>
+          <button onclick="changeActiveJourney('parent')" id="role-tab-parent" class="journey-tab px-4 py-2.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white dark:hover:text-white light:hover:text-slate-900 transition-all">
+            <i class="fa-solid fa-users mr-1.5"></i> Parent
+          </button>
+          <button onclick="changeActiveJourney('teacher')" id="role-tab-teacher" class="journey-tab px-4 py-2.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white dark:hover:text-white light:hover:text-slate-900 transition-all">
+            <i class="fa-solid fa-chalkboard-user mr-1.5"></i> Teacher
+          </button>
+          <button onclick="changeActiveJourney('bursar')" id="role-tab-bursar" class="journey-tab px-4 py-2.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white dark:hover:text-white light:hover:text-slate-900 transition-all">
+            <i class="fa-solid fa-wallet mr-1.5"></i> Bursar
+          </button>
+          <button onclick="changeActiveJourney('principal')" id="role-tab-principal" class="journey-tab px-4 py-2.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white dark:hover:text-white light:hover:text-slate-900 transition-all">
+            <i class="fa-solid fa-user-tie mr-1.5"></i> Principal
+          </button>
+          <button onclick="changeActiveJourney('admin')" id="role-tab-admin" class="journey-tab px-4 py-2.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white dark:hover:text-white light:hover:text-slate-900 transition-all">
+            <i class="fa-solid fa-gears mr-1.5"></i> Admin
+          </button>
+        </div>
+
+        <!-- Interactive Journey Dynamic Box -->
+        <div id="journey-content-box" class="bg-slate-900 dark:bg-slate-900 light:bg-white p-6 md:p-8 rounded-2xl border border-slate-800 dark:border-slate-800 light:border-slate-200 shadow-xl transition-all">
+          <!-- Populated by JavaScript -->
+        </div>
+      </section>
+
+      <!-- Section 4: Onboarding Setup Runbook -->
+      <section id="onboarding-runbook" class="space-y-6">
+        <div class="flex items-center gap-3">
+          <span class="h-8 w-8 rounded-lg bg-brand-500/10 text-brand-400 flex items-center justify-center font-bold text-sm">4</span>
+          <h3 class="font-display font-bold text-2xl tracking-tight text-white dark:text-white light:text-slate-900">Setup & Onboarding Runbook</h3>
+        </div>
+
+        <p class="text-sm text-slate-400 dark:text-slate-400 light:text-slate-600 max-w-3xl">
+          Based on the strict requirements of <code class="bg-slate-900 px-1 py-0.5 rounded text-white font-mono text-xs">PILOT_SCHOOL_RUNBOOK.md</code>, this step-by-step phased approach takes a new tenant school from system preflight to full go-live status.
+        </p>
+
+        <!-- Onboarding Flowchart (Mermaid) -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 overflow-x-auto">
+          <pre class="mermaid text-xs flex justify-center">
+flowchart TD
+  P0[Phase 0: Environment Preflight] --> P1[Phase 1: Generate Access Code]
+  P1 --> P2[Phase 2: School Registration]
+  P2 --> P3[Phase 3: Academic Setup]
+  P3 --> P4[Phase 4: User Provisioning]
+  P4 --> P5[Phase 5: Day-1 Smoke Tests]
+  P5 --> P6[Phase 6: Live Sync & Audits]
+          </pre>
+        </div>
+
+        <!-- Phased Steps -->
+        <div class="space-y-4">
+          <div class="p-5 bg-slate-900/50 dark:bg-slate-900/50 light:bg-white rounded-2xl border border-slate-800 dark:border-slate-800 light:border-slate-200">
+            <span class="text-[10px] uppercase font-bold text-slate-500">Phase 0</span>
+            <h4 class="font-bold text-white dark:text-white light:text-slate-900 mt-1">Environment Preflight & Deployment</h4>
+            <p class="text-xs text-slate-400 mt-2 leading-relaxed">
+              Verify platform readiness prior to introducing user flows. Configure the production environment variables, confirming no private secrets are present in public repositories, and trigger preflight diagnostics:
+            </p>
+            <code class="block mt-2 p-2 bg-slate-950 dark:bg-slate-950 light:bg-slate-100 rounded text-xs text-neon-blue font-mono">npm run pilot:preflight</code>
+          </div>
+
+          <div class="p-5 bg-slate-900/50 dark:bg-slate-900/50 light:bg-white rounded-2xl border border-slate-800 dark:border-slate-800 light:border-slate-200">
+            <span class="text-[10px] uppercase font-bold text-brand-400">Phase 1</span>
+            <h4 class="font-bold text-white dark:text-white light:text-slate-900 mt-1">Access Code Generation</h4>
+            <p class="text-xs text-slate-400 mt-2 leading-relaxed">
+              Platform super-admins sign in at <code class="text-white">/app/super-admin</code> to generate a single-use, 6-digit access code for the target tenant. This code is passed securely to the head teacher.
+            </p>
+            <div class="mt-2 flex items-center justify-between bg-slate-950 p-2.5 rounded text-xs text-slate-300 font-mono">
+              <span>GET /api/super-admin/access-codes</span>
+              <span class="text-neon-indigo">Outputs: { code: "918237" }</span>
+            </div>
+          </div>
+
+          <div class="p-5 bg-slate-900/50 dark:bg-slate-900/50 light:bg-white rounded-2xl border border-slate-800 dark:border-slate-800 light:border-slate-200">
+            <span class="text-[10px] uppercase font-bold text-neon-blue">Phase 2</span>
+            <h4 class="font-bold text-white dark:text-white light:text-slate-900 mt-1">School Registration</h4>
+            <p class="text-xs text-slate-400 mt-2 leading-relaxed">
+              The incoming head teacher opens <code class="text-white">/register</code>, inputs the 6-digit access code, and completes the school profile. The registration action runs <code class="text-white">initializeSchoolDefaults</code>, provisioning default departments and permissions inside the new tenant.
+            </p>
+            <div class="mt-2 flex flex-col gap-1.5 bg-slate-950 p-2.5 rounded text-xs text-slate-300 font-mono">
+              <div><strong class="text-neon-pink">POST</strong> /api/auth/verify-access-code</div>
+              <div><strong class="text-neon-pink">POST</strong> /api/auth/register-school</div>
+            </div>
+          </div>
+
+          <div class="p-5 bg-slate-900/50 dark:bg-slate-900/50 light:bg-white rounded-2xl border border-slate-800 dark:border-slate-800 light:border-slate-200">
+            <span class="text-[10px] uppercase font-bold text-neon-amber">Phase 3</span>
+            <h4 class="font-bold text-white dark:text-white light:text-slate-900 mt-1">Academic Structure</h4>
+            <p class="text-xs text-slate-400 mt-2 leading-relaxed">
+              The school administrator designs the academic year, active school terms, streams, classes, and subjects using UI controls inside the Admin console:
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3 text-xs">
+              <div class="p-3 bg-slate-950 rounded">
+                <strong class="text-white">Years & Terms</strong>
+                <p class="text-[10px] text-slate-400 mt-1">POST /api/admin/academic-years<br>POST /api/admin/terms</p>
+              </div>
+              <div class="p-3 bg-slate-950 rounded">
+                <strong class="text-white">Classes & Streams</strong>
+                <p class="text-[10px] text-slate-400 mt-1">POST /api/admin/classes</p>
+              </div>
+              <div class="p-3 bg-slate-950 rounded">
+                <strong class="text-white">Subjects & Lessons</strong>
+                <p class="text-[10px] text-slate-400 mt-1">POST /api/admin/subjects<br>POST /api/admin/timetable</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="p-5 bg-slate-900/50 dark:bg-slate-900/50 light:bg-white rounded-2xl border border-slate-800 dark:border-slate-800 light:border-slate-200">
+            <span class="text-[10px] uppercase font-bold text-neon-pink">Phase 4</span>
+            <h4 class="font-bold text-white dark:text-white light:text-slate-900 mt-1">User Provisioning (Teachers, Students & Parents)</h4>
+            <p class="text-xs text-slate-400 mt-2 leading-relaxed">
+              Configure system roles in the required sequence to maintain relationship references:
+            </p>
+            <ol class="list-decimal list-inside text-xs text-slate-400 mt-2 space-y-1">
+              <li>Create teacher records, mapping subject specializations and assigned streams (<code class="text-white">POST /api/admin/staff/invite</code>).</li>
+              <li>Enroll student profiles, binding them to stream classes.</li>
+              <li>Register parents, linking them to students (<code class="text-white">POST /api/admin/relationships</code>).</li>
+            </ol>
+          </div>
+
+          <div class="p-5 bg-slate-900/50 dark:bg-slate-900/50 light:bg-white rounded-2xl border border-slate-800 dark:border-slate-800 light:border-slate-200">
+            <span class="text-[10px] uppercase font-bold text-neon-green">Phase 5</span>
+            <h4 class="font-bold text-white dark:text-white light:text-slate-900 mt-1">Day-1 Smoke Tests</h4>
+            <p class="text-xs text-slate-400 mt-2 leading-relaxed">
+              Execute test operations with school coordinators to guarantee performance under real-world conditions:
+            </p>
+            <ul class="list-disc list-inside text-xs text-slate-400 mt-2 space-y-1">
+              <li>Confirm Head Teacher first login triggers forced password change at <code class="text-white">/first-login</code>.</li>
+              <li>Verify Teacher bootstrap dashboard takes <strong class="text-white">under 2.5s</strong> at p95 latency.</li>
+              <li>Mark attendance for a single class and confirm instant WebSocket updates on parent views.</li>
+              <li>Upload an avatar to verify direct CDN loading.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 5: Row-Level Security -->
+      <section id="rls-tenant" class="space-y-6">
+        <div class="flex items-center gap-3">
+          <span class="h-8 w-8 rounded-lg bg-brand-500/10 text-brand-400 flex items-center justify-center font-bold text-sm">5</span>
+          <h3 class="font-display font-bold text-2xl tracking-tight text-white dark:text-white light:text-slate-900">Multi-Tenant Row-Level Security</h3>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div class="space-y-4">
+            <h4 class="font-semibold text-lg text-neon-blue"><i class="fa-solid fa-shield-halved mr-2"></i>Tenancy Isolation via school_id</h4>
+            <p class="text-sm text-slate-400 dark:text-slate-400 light:text-slate-600 leading-relaxed">
+              Every table containing tenant-private rows is bound to a strict Postgres Row-Level Security (RLS) policy. Tenant boundaries are governed via a foreign key reference <code class="text-white">school_id</code>. There are no global raw SQL statements accessible to users; the engine automatically screens out unauthorized records.
+            </p>
+            <p class="text-sm text-slate-400 dark:text-slate-400 light:text-slate-600 leading-relaxed">
+              When a user authenticates, their database token contains metadata that points to their primary profile record. Postgres compares this profile data with its policy filters, bypassing the need for developers to manually inject <code class="text-white">WHERE school_id = X</code> filters in routing logic.
+            </p>
+
+            <div class="p-4 bg-slate-900 border border-slate-800 rounded-xl space-y-2">
+              <span class="text-[10px] uppercase font-bold text-slate-500 block">Typical Policy (Academic Records)</span>
+              <code class="block p-3 bg-slate-950 rounded text-xs text-brand-300 overflow-x-auto whitespace-pre font-mono">
+CREATE POLICY school_isolation_policy ON public.results
+AS RESTRICTIVE
+USING (school_id = get_my_school_id())
+WITH CHECK (school_id = get_my_school_id());
+              </code>
+            </div>
+          </div>
+
+          <div class="space-y-4">
+            <h4 class="font-semibold text-lg text-neon-indigo"><i class="fa-solid fa-key mr-2"></i>Security Definer Functions</h4>
+            <p class="text-sm text-slate-400 dark:text-slate-400 light:text-slate-600 leading-relaxed">
+              Because user metadata sits inside the private <code class="text-white">auth</code> schema and user profiles reside in public tables, optimized <code class="text-white">SECURITY DEFINER</code> functions are used to resolve actor context fast.
+            </p>
+
+            <div class="overflow-x-auto rounded-lg border border-slate-800">
+              <table class="w-full text-left text-xs bg-slate-900 text-slate-300">
+                <thead class="bg-slate-950 font-bold text-slate-400 uppercase">
+                  <tr>
+                    <th class="p-3">Function</th>
+                    <th class="p-3">Security Level</th>
+                    <th class="p-3">Behavior</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800">
+                  <tr>
+                    <td class="p-3 font-mono text-neon-blue font-bold">get_my_school_id()</td>
+                    <td class="p-3 text-brand-400 font-semibold">AUTHENTICATED ONLY</td>
+                    <td class="p-3">Resolves profile `school_id` from user credentials.</td>
+                  </tr>
+                  <tr>
+                    <td class="p-3 font-mono text-neon-blue font-bold">get_my_role()</td>
+                    <td class="p-3 text-brand-400 font-semibold">AUTHENTICATED ONLY</td>
+                    <td class="p-3">Resolves actor role from cached database records.</td>
+                  </tr>
+                  <tr>
+                    <td class="p-3 font-mono text-neon-blue font-bold">is_sensitive_role()</td>
+                    <td class="p-3 text-neon-pink font-semibold">HIGH AUDIT</td>
+                    <td class="p-3">Evaluates role risk for critical write mutations.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="p-4 bg-brand-950/20 border border-brand-500/20 rounded-xl">
+              <h5 class="text-xs font-bold text-white uppercase"><i class="fa-solid fa-lock text-neon-pink mr-2"></i>Hardening Actions (Migration 025)</h5>
+              <p class="text-xs text-slate-400 mt-1 leading-relaxed">
+                By default, public database schemas grant execution rights on functions to public/anonymous roles. ZamSchool explicitly revokes helper execution privileges from <code class="text-white">anon</code> and <code class="text-white">PUBLIC</code>, limiting helper execution entirely to logged-in user tokens.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 6: Interactive Database Schema Card Viewer -->
+      <section id="db-schema" class="space-y-6">
+        <div class="flex items-center gap-3">
+          <span class="h-8 w-8 rounded-lg bg-brand-500/10 text-brand-400 flex items-center justify-center font-bold text-sm">6</span>
+          <h3 class="font-display font-bold text-2xl tracking-tight text-white dark:text-white light:text-slate-900">Database Schema Cards</h3>
+        </div>
+
+        <p class="text-sm text-slate-400 dark:text-slate-400 light:text-slate-600 max-w-3xl">
+          Use the quick filter bar to search for tables, descriptions, columns, or types. This database schema mirrors the production database structures exactly.
+        </p>
+
+        <!-- Database ERD (Mermaid) -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 overflow-x-auto text-slate-100">
+          <h4 class="text-sm font-display font-bold mb-4 text-neon-indigo uppercase tracking-wider"><i class="fa-solid fa-network-wired mr-2"></i>Entity-Relationship Diagram (ERD)</h4>
+          <pre class="mermaid text-xs flex justify-center">
+erDiagram
+    profiles ||--o| teachers : extends
+    profiles ||--o| students : extends
+    schools ||--o{ profiles : contains
+    classes ||--o{ students : enrolls
+    subjects ||--o{ results : graded_in
+    students ||--o{ results : earns
+    students ||--o{ attendance : tracked_by
+    students ||--o{ student_fees : charged
+          </pre>
+        </div>
+
+        <!-- DB Filter -->
+        <div class="flex items-center gap-4 bg-slate-900 border border-slate-800 p-4 rounded-xl">
+          <div class="relative flex-1">
+            <i class="fa-solid fa-filter absolute left-3.5 top-3.5 text-slate-400 text-sm"></i>
+            <input 
+              type="text" 
+              id="db-search" 
+              placeholder="Search tables or columns (e.g. profiles, school_id, uuid)..." 
+              class="w-full bg-slate-950/80 text-sm pl-10 pr-4 py-2.5 rounded-lg border border-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-100"
+              oninput="filterDbCards(this.value)"
+            >
+          </div>
+          <button onclick="clearDbFilter()" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-xs rounded-lg text-white font-semibold transition-all"><i class="fa-solid fa-circle-xmark mr-1.5"></i>Clear</button>
+        </div>
+
+        <!-- DB Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="db-cards-container">
+          <!-- Populated by JavaScript -->
+        </div>
+      </section>
+
+      <!-- Section 7: Cloudflare R2 File Storage Patterns -->
+      <section id="r2-storage" class="space-y-6">
+        <div class="flex items-center gap-3">
+          <span class="h-8 w-8 rounded-lg bg-brand-500/10 text-brand-400 flex items-center justify-center font-bold text-sm">7</span>
+          <h3 class="font-display font-bold text-2xl tracking-tight text-white dark:text-white light:text-slate-900">Cloudflare R2 File Storage</h3>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div class="space-y-4">
+            <h4 class="font-semibold text-lg text-neon-pink"><i class="fa-solid fa-cloud-arrow-up mr-2"></i>Pre-Authorized Upload Flow</h4>
+            <p class="text-sm text-slate-400 dark:text-slate-400 light:text-slate-600 leading-relaxed">
+              To conserve server compute and memory, ZamSchool OS serves static and user uploads through <strong>Cloudflare R2</strong>. In production, files are not streamed through the main Next.js backend server.
+            </p>
+            <p class="text-sm text-slate-400 dark:text-slate-400 light:text-slate-600 leading-relaxed">
+              When a user attaches files or updates an avatar, the client requests a pre-authorized signed upload URL via <code class="text-white">/api/files/authorize-upload</code>. After passing security validation, the server returns a temporary target bucket URL. The client then streams the binary payload directly to R2.
+            </p>
+            
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 text-xs space-y-2">
+              <strong class="text-white block">Environment Variables (CDN_AND_R2.md)</strong>
+              <div class="font-mono text-brand-300">
+                R2_ENDPOINT = https://[account].r2.cloudflarestorage.com<br>
+                R2_ASSETS_BUCKET = zamschool-assets<br>
+                R2_PUBLIC_URL = https://pub-[hash].r2.dev
+              </div>
+            </div>
+          </div>
+
+          <div class="space-y-4">
+            <h4 class="font-semibold text-lg text-neon-blue"><i class="fa-solid fa-share-nodes mr-2"></i>R2 Delivery Modes</h4>
+            <p class="text-sm text-slate-400 dark:text-slate-400 light:text-slate-600 leading-relaxed">
+              The storage configuration supports two key delivery modes:
+            </p>
+
+            <div class="overflow-x-auto rounded-lg border border-slate-800">
+              <table class="w-full text-left text-xs bg-slate-900 text-slate-300">
+                <thead class="bg-slate-950 font-bold uppercase text-slate-400">
+                  <tr>
+                    <th class="p-3">Mode</th>
+                    <th class="p-3">Trigger Condition</th>
+                    <th class="p-3">Output URL Shape</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800">
+                  <tr>
+                    <td class="p-3 font-semibold text-white">cdn Mode</td>
+                    <td class="p-3"><code class="text-brand-400">R2_PUBLIC_URL</code> is set</td>
+                    <td class="p-3 font-mono text-neon-blue">https://pub-[id].r2.dev/[school_id]/[key]</td>
+                  </tr>
+                  <tr>
+                    <td class="p-3 font-semibold text-white">proxy Mode</td>
+                    <td class="p-3"><code class="text-brand-400">R2_PUBLIC_URL</code> is blank</td>
+                    <td class="p-3 font-mono text-neon-blue">/api/public/assets/[key]</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="p-3 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-400">
+              <i class="fa-solid fa-circle-exclamation text-neon-amber mr-1.5"></i>
+              <strong>Proxy Warning:</strong> If running in proxy mode, files are served through our backend server, consuming hosting bandwidth. Web apps and native applications must use <strong class="text-white">cdn mode</strong> in production.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 8: Caching Strategy & Latency Layers -->
+      <section id="caching-stack" class="space-y-6">
+        <div class="flex items-center gap-3">
+          <span class="h-8 w-8 rounded-lg bg-brand-500/10 text-brand-400 flex items-center justify-center font-bold text-sm">8</span>
+          <h3 class="font-display font-bold text-2xl tracking-tight text-white dark:text-white light:text-slate-900">Caching & Latency Layers</h3>
+        </div>
+
+        <p class="text-sm text-slate-400 dark:text-slate-400 light:text-slate-600 max-w-3xl">
+          To manage traffic spikes during exam results releases and morning registration, ZamSchool OS employs multiple layers of caching:
+        </p>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div class="p-5 bg-slate-900 dark:bg-slate-900 light:bg-white border border-slate-800 dark:border-slate-800 light:border-slate-200 rounded-2xl">
+            <div class="flex items-center gap-2 mb-3">
+              <i class="fa-solid fa-mobile-screen text-neon-blue text-lg"></i>
+              <h4 class="font-bold text-sm text-white dark:text-white light:text-slate-900">1. Client Memory Cache</h4>
+            </div>
+            <p class="text-xs text-slate-400 dark:text-slate-400 light:text-slate-500 leading-relaxed">
+              Stable resources (such as active class stream metadata and school years) are stored inside local React/Native memory contexts.
+            </p>
+            <span class="inline-block mt-3 text-[10px] font-mono bg-slate-950 px-2.5 py-1 rounded text-brand-300 font-bold">TTL: 60 Seconds</span>
+          </div>
+
+          <div class="p-5 bg-slate-900 dark:bg-slate-900 light:bg-white border border-slate-800 dark:border-slate-800 light:border-slate-200 rounded-2xl">
+            <div class="flex items-center gap-2 mb-3">
+              <i class="fa-solid fa-bolt text-neon-amber text-lg"></i>
+              <h4 class="font-bold text-sm text-white dark:text-white light:text-slate-900">2. Redis Role Caches</h4>
+            </div>
+            <p class="text-xs text-slate-400 dark:text-slate-400 light:text-slate-500 leading-relaxed">
+              Stores authenticated security credentials, user permission role scopes, and request throttling limits.
+            </p>
+            <span class="inline-block mt-3 text-[10px] font-mono bg-slate-950 px-2.5 py-1 rounded text-brand-300 font-bold">Managed dynamically via ioredis</span>
+          </div>
+
+          <div class="p-5 bg-slate-900 dark:bg-slate-900 light:bg-white border border-slate-800 dark:border-slate-800 light:border-slate-200 rounded-2xl">
+            <div class="flex items-center gap-2 mb-3">
+              <i class="fa-solid fa-user-shield text-neon-green text-lg"></i>
+              <h4 class="font-bold text-sm text-white dark:text-white light:text-slate-900">3. Platform API Budget</h4>
+            </div>
+            <p class="text-xs text-slate-400 dark:text-slate-400 light:text-slate-500 leading-relaxed">
+              Employs a sliding window budget limiting client requests to prevent database performance degradation:
+            </p>
+            <span class="inline-block mt-3 text-[10px] font-mono bg-slate-950 px-2.5 py-1 rounded text-brand-300 font-bold">25 - 30 req/sec threshold</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 9: Offline Simulator Widget -->
+      <section id="sim-widget" class="space-y-6">
+        <div class="flex items-center gap-3">
+          <span class="h-8 w-8 rounded-lg bg-brand-500/10 text-brand-400 flex items-center justify-center font-bold text-sm">9</span>
+          <h3 class="font-display font-bold text-2xl tracking-tight text-white dark:text-white light:text-slate-900">Offline Status Simulator</h3>
+        </div>
+
+        <p class="text-sm text-slate-400 dark:text-slate-400 light:text-slate-600 max-w-3xl">
+          The platform's <code class="bg-slate-900 px-1 py-0.5 rounded text-white font-mono text-xs">OfflineStatusProvider</code> dynamically monitors network conditions. Use the simulator below to test how the UI behaves.
+        </p>
+
+        <!-- Simulator Frame -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl">
+          
+          <!-- Controllers -->
+          <div class="space-y-4 border-b lg:border-b-0 lg:border-r border-slate-800 pb-6 lg:pb-0 lg:pr-6">
+            <h4 class="font-display font-bold text-xs uppercase tracking-wider text-neon-blue">Select Simulated State</h4>
+            
+            <div class="space-y-3">
+              <button onclick="changeSimState('online')" id="sim-state-online" class="sim-pill w-full flex items-center justify-between p-3 rounded-xl bg-slate-950 border-2 border-neon-green transition-all">
+                <div class="flex items-center gap-2.5">
+                  <span class="h-3 w-3 rounded-full bg-neon-green animate-pulse"></span>
+                  <span class="text-xs font-semibold text-white">Online (Normal)</span>
+                </div>
+                <i class="fa-solid fa-circle-check text-neon-green"></i>
+              </button>
+
+              <button onclick="changeSimState('slow')" id="sim-state-slow" class="sim-pill w-full flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-neon-amber transition-all">
+                <div class="flex items-center gap-2.5">
+                  <span class="h-3 w-3 rounded-full bg-neon-amber"></span>
+                  <span class="text-xs font-semibold text-slate-400">Slow Latency (3G)</span>
+                </div>
+                <i class="fa-solid fa-clock text-neon-amber"></i>
+              </button>
+
+              <button onclick="changeSimState('offline')" id="sim-state-offline" class="sim-pill w-full flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-neon-red transition-all">
+                <div class="flex items-center gap-2.5">
+                  <span class="h-3 w-3 rounded-full bg-neon-red"></span>
+                  <span class="text-xs font-semibold text-slate-400">Offline Mode</span>
+                </div>
+                <i class="fa-solid fa-wifi-slash text-neon-red"></i>
+              </button>
+            </div>
+
+            <!-- Debug Logs -->
+            <div class="bg-slate-950 p-3 rounded-lg text-[10px] font-mono text-slate-400 space-y-1">
+              <span class="font-bold text-white block uppercase mb-1">State logs</span>
+              <div id="sim-logs">
+                [11:00:00] OfflineStatusProvider initialized.<br>
+                [11:00:01] Listening on network events.
+              </div>
+            </div>
+          </div>
+
+          <!-- Device screen mock -->
+          <div class="lg:col-span-2 flex flex-col justify-between space-y-4">
+            <div class="bg-slate-950 rounded-xl p-4 border border-slate-800">
+              
+              <!-- Mock Statusbar -->
+              <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-3 text-xs">
+                <span class="font-bold text-slate-400 font-mono">Mock Device Browser</span>
+                <span id="screen-status-badge" class="px-2 py-0.5 rounded bg-neon-green/10 text-neon-green border border-neon-green/20 text-[10px] font-bold">ONLINE</span>
+              </div>
+
+              <!-- Alert Messages -->
+              <div id="screen-banner-offline" class="hidden p-2.5 bg-neon-red/10 border border-neon-red/20 rounded text-[11px] text-neon-red flex items-center gap-2 mb-3">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span>Disconnection detected. Write operations are disabled. Serving cached pages.</span>
+              </div>
+
+              <div id="screen-banner-slow" class="hidden p-2.5 bg-neon-amber/10 border border-neon-amber/20 rounded text-[11px] text-neon-amber flex items-center gap-2 mb-3">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span>High connection latency detected. Some request retry periods may apply.</span>
+              </div>
+
+              <!-- Simulator Screens -->
+              <div class="p-4 bg-slate-900 border border-slate-800 rounded-lg text-center space-y-3">
+                <div class="text-left text-xs">
+                  <span class="text-slate-500 font-bold uppercase">Active Shell View</span>
+                  <p class="font-semibold text-white">Teacher Portal — Attendance</p>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                  <button onclick="runSimulatedAction('get')" class="p-3 bg-slate-950 border border-slate-800 hover:border-brand-500 rounded-xl text-xs text-slate-300 font-semibold flex flex-col items-center gap-1.5 transition-all">
+                    <i class="fa-solid fa-calendar-alt text-neon-blue text-base"></i>
+                    <span>Fetch Timetable (GET)</span>
+                  </button>
+                  <button onclick="runSimulatedAction('post')" class="p-3 bg-slate-950 border border-slate-800 hover:border-brand-500 rounded-xl text-xs text-slate-300 font-semibold flex flex-col items-center gap-1.5 transition-all">
+                    <i class="fa-solid fa-save text-neon-indigo text-base"></i>
+                    <span>Submit Attendance (POST)</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Output logger console -->
+            <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 text-xs font-mono text-slate-400 min-h-[90px] flex flex-col justify-center">
+              <span class="text-[9px] uppercase font-bold text-slate-500 mb-1">Response Output</span>
+              <div id="sim-response-console">
+                Select a simulated connection state and click an action to test.
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 10: Searchable API Explorer -->
+      <section id="api-cards" class="space-y-6">
+        <div class="flex items-center gap-3">
+          <span class="h-8 w-8 rounded-lg bg-brand-500/10 text-brand-400 flex items-center justify-center font-bold text-sm">10</span>
+          <h3 class="font-display font-bold text-2xl tracking-tight text-white dark:text-white light:text-slate-900">Searchable API Explorer</h3>
+        </div>
+
+        <p class="text-sm text-slate-400 dark:text-slate-400 light:text-slate-600 max-w-3xl">
+          Search and inspect core platform endpoints used by ZamSchool. Use the category filter to narrow down results.
+        </p>
+
+        <!-- Filter bar -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-900 border border-slate-800 p-4 rounded-xl">
+          <div class="relative md:col-span-2">
+            <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3.5 text-slate-400 text-sm"></i>
+            <input 
+              type="text" 
+              id="api-search" 
+              placeholder="Search API paths or descriptions (e.g. auth, bootstrap)..." 
+              class="w-full bg-slate-950/80 text-sm pl-10 pr-4 py-2.5 rounded-lg border border-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-100"
+              oninput="filterApiCards()"
+            >
+          </div>
+          <div>
+            <select 
+              id="api-cat-filter" 
+              class="w-full bg-slate-950 text-sm p-2.5 rounded-lg border border-slate-800 focus:outline-none text-slate-400"
+              onchange="filterApiCards()"
+            >
+              <option value="all">All Categories</option>
+              <option value="auth">Auth & Codes</option>
+              <option value="account">Account & Setup</option>
+              <option value="teacher">Teacher Actions</option>
+              <option value="admin">Admin Operations</option>
+              <option value="payments">Financial Transactions</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- API List -->
+        <div class="space-y-4" id="api-cards-container">
+          <!-- Populated by JavaScript -->
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Global Toast Feedback -->
+  <div id="toast" class="fixed bottom-6 right-6 px-4 py-3 bg-slate-900 border border-brand-500 text-white rounded-xl shadow-2xl flex items-center gap-3 transition-all duration-300 transform translate-y-24 opacity-0 z-50 text-xs font-semibold">
+    <i class="fa-solid fa-circle-check text-neon-green"></i>
+    <span id="toast-text">Content copied to clipboard!</span>
+  </div>
+
+  <!-- Frontend Logic Script -->
+  <script>
+    let activeJourney = 'student';
+    let currentSimState = 'online';
+
+    // 14 Role Journeys Object
+    const journeys = {
+      student: {
+        tag: 'Restricted Standard User',
+        colorClass: 'text-neon-blue bg-neon-blue/10 border-neon-blue/20',
+        menu: ['Dashboard', 'Internal Messages', 'School Broadcasts', 'My Assignments', 'View Attendance', 'Published Report Cards'],
+        story: 'Student logs in, reviews the assignments page, checks grades on published report cards, and checks the daily lesson timetable.',
+        writes: 'Limited to uploading homework attachments to R2 via direct signed URLs, updating profile descriptions, and sending text messages to teachers.',
+        apiList: 'GET /api/student/dashboard<br>GET /api/student/results<br>GET /api/student/assignments/submissions'
+      },
+      parent: {
+        tag: 'Restricted Linked User',
+        colorClass: 'text-neon-pink bg-neon-pink/10 border-neon-pink/20',
+        menu: ['Dashboard', 'My Children Overview', 'Results & Attendance', 'Billing & Payments Portal', 'Messages'],
+        story: 'Parent signs in, selects a child to view their attendance status, reviews term-end grade reports, and view fee balance statements.',
+        writes: 'Allowed to trigger local fee payment simulations and update user contact preferences.',
+        apiList: 'GET /api/parent/dashboard<br>GET /api/parent/children<br>GET /api/parent/attendance'
+      },
+      teacher: {
+        tag: 'Standard Staff User',
+        colorClass: 'text-neon-indigo bg-neon-indigo/10 border-neon-indigo/20',
+        menu: ['Dashboard', 'My Classes', 'Attendance Roll Call', 'Gradebook Entry', 'Assignments Creator', 'Messages'],
+        story: 'Teacher reviews their daily schedule, records classroom attendance status, issues homework, and updates exam results in a draft state.',
+        writes: 'Authorized to record attendance records, save homework descriptions, and log graded results.',
+        apiList: 'GET /api/teacher/bootstrap<br>POST /api/teacher/attendance<br>POST /api/teacher/results'
+      },
+      bursar: {
+        tag: 'Financial Sensitive Staff',
+        colorClass: 'text-neon-amber bg-neon-amber/10 border-neon-amber/20',
+        menu: ['Dashboard', 'Fee Catalogs', 'Student Accounts Ledger', 'Manual Payments', 'Billing Runs', 'Invoices'],
+        story: 'Bursar reviews total school revenue collections, configures fee templates, triggers automated term billing, and logs manual receipts.',
+        writes: 'Full authority to modify school fee templates, charge student accounts, and register parent payments.',
+        apiList: 'GET /api/payments/fees<br>POST /api/payments/fees<br>GET /api/payments/billing'
+      },
+      principal: {
+        tag: 'Executive Sensitive Staff',
+        colorClass: 'text-rose-400 bg-rose-500/10 border-rose-500/20',
+        menu: ['Executive Dashboard', 'Audit Logs', 'Department Overview', 'Term Results Publishing', 'Announcements'],
+        story: 'Head Teacher monitors attendance trends, reviews financial statements, signs off on exam grades, and publishes school announcements.',
+        writes: 'Authorized to trigger academic result releases, publish school-wide broadcasts, and update core properties.',
+        apiList: 'GET /api/admin/school<br>GET /api/admin/audit<br>POST /api/admin/announcements'
+      },
+      admin: {
+        tag: 'Infrastructure Admin Staff',
+        colorClass: 'text-purple-400 bg-purple-500/10 border-purple-500/20',
+        menu: ['Settings Control', 'Class Configuration', 'Timetable Scheduling', 'Subjects Directory', 'Invitations Hub'],
+        story: 'System administrator manages school parameters, generates staff invitation tokens, maps classes to classrooms, and registers streams.',
+        writes: 'Configures academic structures, issues staff invitation tokens, resets user passwords, and configures lesson timings.',
+        apiList: 'POST /api/admin/staff/invite<br>GET /api/admin/staff/invitations<br>POST /api/admin/timetable'
+      }
+    };
+
+    // Database Tables Array
+    const dbTables = [
+      {
+        name: 'profiles',
+        desc: 'Maps authenticated users to roles and school tenants.',
+        cols: [
+          { name: 'id', type: 'uuid', d: 'Primary key (references auth.users)' },
+          { name: 'school_id', type: 'uuid', d: 'Tenant school reference' },
+          { name: 'role', type: 'text', d: 'Account system permission role' },
+          { name: 'email', type: 'text', d: 'Unique profile email address' },
+          { name: 'first_name', type: 'text', d: 'User first name' },
+          { name: 'last_name', type: 'text', d: 'User last name' },
+          { name: 'avatar_url', type: 'text', d: 'Cloudflare R2 public image url' }
+        ]
+      },
+      {
+        name: 'schools',
+        desc: 'Root school registry containing basic tenant fields.',
+        cols: [
+          { name: 'id', type: 'uuid', d: 'Primary key' },
+          { name: 'name', type: 'text', d: 'Institutional school name' },
+          { name: 'code', type: 'text', d: 'Unique alphanumeric tenant code' },
+          { name: 'address', type: 'text', d: 'Physical billing address' }
+        ]
+      },
+      {
+        name: 'teachers',
+        desc: 'Teacher details mapped 1:1 to profile records.',
+        cols: [
+          { name: 'id', type: 'uuid', d: 'Primary key (references profiles.id)' },
+          { name: 'school_id', type: 'uuid', d: 'Tenant school reference' },
+          { name: 'employee_id', type: 'text', d: 'Teacher registration code' },
+          { name: 'specialization', type: 'text[]', d: 'List of subject codes assigned' }
+        ]
+      },
+      {
+        name: 'students',
+        desc: 'Student parameters mapped 1:1 to profile records.',
+        cols: [
+          { name: 'id', type: 'uuid', d: 'Primary key (references profiles.id)' },
+          { name: 'school_id', type: 'uuid', d: 'Tenant school reference' },
+          { name: 'class_id', type: 'uuid', d: 'Current assigned class' },
+          { name: 'admission_no', type: 'text', d: 'Unique registration serial' }
+        ]
+      },
+      {
+        name: 'classes',
+        desc: 'Classroom containers for streams and grades.',
+        cols: [
+          { name: 'id', type: 'uuid', d: 'Primary key' },
+          { name: 'school_id', type: 'uuid', d: 'Tenant school reference' },
+          { name: 'name', type: 'text', d: 'Composite label e.g. Grade 10-A' },
+          { name: 'stream', type: 'text', d: 'Stream divisions' }
+        ]
+      },
+      {
+        name: 'results',
+        desc: 'Logs student academic scores linked to homework.',
+        cols: [
+          { name: 'id', type: 'uuid', d: 'Primary key' },
+          { name: 'school_id', type: 'uuid', d: 'Tenant school reference' },
+          { name: 'student_id', type: 'uuid', d: 'Reference to target student' },
+          { name: 'assignment_id', type: 'uuid', d: 'Reference to graded homework' },
+          { name: 'score', type: 'numeric', d: 'Mark score awarded' },
+          { name: 'published', type: 'boolean', d: 'Publish status flag' }
+        ]
+      },
+      {
+        name: 'attendance',
+        desc: 'Daily attendance logs mapping student dates.',
+        cols: [
+          { name: 'id', type: 'uuid', d: 'Primary key' },
+          { name: 'school_id', type: 'uuid', d: 'Tenant school reference' },
+          { name: 'student_id', type: 'uuid', d: 'Reference to student record' },
+          { name: 'date', type: 'date', d: 'Record calendar date YYYY-MM-DD' },
+          { name: 'status', type: 'text', d: 'Status (present, absent, tardy, excused)' }
+        ]
+      },
+      {
+        name: 'fees',
+        desc: 'Billing templates defined by active academic terms.',
+        cols: [
+          { name: 'id', type: 'uuid', d: 'Primary key' },
+          { name: 'school_id', type: 'uuid', d: 'Tenant school reference' },
+          { name: 'name', type: 'text', d: 'Billing template description' },
+          { name: 'amount', type: 'numeric', d: 'Billing value set' }
+        ]
+      },
+      {
+        name: 'payments',
+        desc: 'Transaction registry tracking student balance updates.',
+        cols: [
+          { name: 'id', type: 'uuid', d: 'Primary key' },
+          { name: 'school_id', type: 'uuid', d: 'Tenant school reference' },
+          { name: 'student_id', type: 'uuid', d: 'Target student record' },
+          { name: 'amount', type: 'numeric', d: 'Logged transaction payment amount' },
+          { name: 'reference', type: 'text', d: 'Unique invoice/bank serial code' }
+        ]
+      }
+    ];
+
+    // API Explorer Routes List
+    const apiRoutes = [
+      {
+        path: '/api/auth/verify-access-code',
+        method: 'POST',
+        cat: 'auth',
+        ctx: 'Unauthenticated Public Access',
+        desc: 'Checks if a 6-digit access code is valid and has not expired or been used.',
+        params: 'code (string, required)',
+        resp: { success: true, schoolName: "Zambia National School", valid: true }
+      },
+      {
+        path: '/api/auth/register-school',
+        method: 'POST',
+        cat: 'auth',
+        ctx: 'Unauthenticated Public Access',
+        desc: 'Registers a new school, configures the head teacher profile, and initializes tenant settings.',
+        params: 'accessCode (string), name (string), headTeacherName (string), email (string), password (string)',
+        resp: { success: true, school_id: "6e2182c1-2a1e-4bf4-9382-efcdcb32821a", message: "Defaults initialized." }
+      },
+      {
+        path: '/api/account/profile',
+        method: 'GET',
+        cat: 'account',
+        ctx: 'requireActorContext()',
+        desc: 'Fetches profile, school tenant context, and credentials for the authenticated user.',
+        params: 'None (reads authorization session cookie)',
+        resp: { success: true, user: { id: "a1", first_name: "John", last_name: "Banda", role: "teacher", school_id: "s1" } }
+      },
+      {
+        path: '/api/teacher/bootstrap',
+        method: 'GET',
+        cat: 'teacher',
+        ctx: 'requireTeacherContext()',
+        desc: 'Assembles full teacher workspace initial dataset (streams, lessons, unread counts) in a single request.',
+        params: 'None',
+        resp: { success: true, classStreams: ["Grade 10-A", "Grade 10-B"], unreadMessages: 4, tasksTotal: 5 }
+      },
+      {
+        path: '/api/teacher/attendance',
+        method: 'POST',
+        cat: 'teacher',
+        ctx: 'requireTeacherContext()',
+        desc: 'Records daily class roll-calls. Fires triggers to notify linked parent profiles.',
+        params: 'class_id (uuid), date (string), list (array of student UUIDs + status strings)',
+        resp: { success: true, recordsLogged: 32, timestamp: "2026-06-08T08:00:00Z" }
+      },
+      {
+        path: '/api/admin/staff/invite',
+        method: 'POST',
+        cat: 'admin',
+        ctx: 'requireAdminContext() | can_manage_invitations()',
+        desc: 'Generates a secure staff onboarding token to invite a new teacher or bursar profile.',
+        params: 'email (string), role (string), department (string)',
+        resp: { success: true, invitation_token: "tok_6a2b8e", url: "/register/staff?token=tok_6a2b8e" }
+      },
+      {
+        path: '/api/payments/fees',
+        method: 'POST',
+        cat: 'payments',
+        ctx: 'requireBursarContext() | isFinancialRole()',
+        desc: 'Creates a new uniform school fee billing template mapped to a specific academic term.',
+        params: 'term_id (uuid), name (string), amount (numeric)',
+        resp: { success: true, fee_id: "fee_902c81", billedAmount: 3200.00 }
+      }
+    ];
+
+    // Toggle Themes (Light vs Dark)
+    function toggleTheme() {
+      const html = document.documentElement;
+      if (html.classList.contains('dark')) {
+        html.classList.remove('dark');
+        html.classList.add('light');
+        localStorage.setItem('theme', 'light');
+      } else {
+        html.classList.remove('light');
+        html.classList.add('dark');
+        localStorage.setItem('theme', 'dark');
+      }
+    }
+
+    // Toggle Mobile Drawer Sidebar
+    function toggleMobileSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      sidebar.classList.toggle('hidden');
+      sidebar.classList.toggle('fixed');
+      sidebar.classList.toggle('bg-slate-950');
+      sidebar.classList.toggle('w-full');
+    }
+
+    // Change Active Role Journey Tab
+    function changeActiveJourney(role) {
+      document.querySelectorAll('.journey-tab').forEach(b => {
+        b.className = "journey-tab px-4 py-2.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white dark:hover:text-white light:hover:text-slate-900 transition-all";
+      });
+      const activeBtn = document.getElementById(`role-tab-${role}`);
+      activeBtn.className = "journey-tab px-4 py-2.5 rounded-lg text-xs font-semibold text-neon-blue bg-neon-blue/10 border-b-2 border-neon-blue transition-all";
+
+      const j = journeys[role];
+      const box = document.getElementById('journey-content-box');
+
+      box.innerHTML = `
+        <div class="space-y-6">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <span class="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Operational Mapping</span>
+              <h4 class="font-display font-bold text-2xl text-white dark:text-white light:text-slate-900 capitalize">${role} Journey Pattern</h4>
+            </div>
+            <span class="px-3 py-1 rounded-full text-[10px] font-bold border ${j.colorClass}">${j.tag}</span>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4 border-t border-slate-800 dark:border-slate-800 light:border-slate-200">
+            <div class="space-y-4">
+              <div>
+                <strong class="text-xs uppercase text-slate-400 block mb-1">Typical Journey Narrative</strong>
+                <p class="text-xs text-slate-400 leading-relaxed">${j.story}</p>
+              </div>
+              <div>
+                <strong class="text-xs uppercase text-slate-400 block mb-1">Designated Writes (Mutations)</strong>
+                <p class="text-xs text-slate-400 leading-relaxed">${j.writes}</p>
+              </div>
+              <div class="p-3 bg-slate-950 rounded-xl border border-slate-800">
+                <span class="text-[10px] uppercase font-bold text-slate-500 block mb-1">Associated API Endpoints</span>
+                <code class="text-[10px] text-brand-300 font-mono block">${j.apiList}</code>
+              </div>
+            </div>
+
+            <div>
+              <strong class="text-xs uppercase text-slate-400 block mb-2">Default Page Navigation Tree</strong>
+              <div class="grid grid-cols-2 gap-2 text-xs">
+                ${j.menu.map(m => `
+                  <div class="p-2 bg-slate-950 rounded border border-slate-850 flex items-center gap-2">
+                    <i class="fa-solid fa-folder-open text-brand-400"></i>
+                    <span class="text-slate-300 font-semibold">${m}</span>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // Render DB Schema Cards
+    function renderDbCards(filterVal = '') {
+      const container = document.getElementById('db-cards-container');
+      const q = filterVal.toLowerCase();
+
+      const filtered = dbTables.filter(t => {
+        return t.name.toLowerCase().includes(q) || 
+               t.desc.toLowerCase().includes(q) ||
+               t.cols.some(c => c.name.toLowerCase().includes(q) || c.type.toLowerCase().includes(q));
+      });
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div class="col-span-full text-center py-12 text-slate-500 bg-slate-900/10 border border-slate-800 rounded-xl">
+            <i class="fa-solid fa-circle-exclamation text-2xl mb-2"></i>
+            <p class="text-xs font-semibold">No matching database entities found.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = filtered.map(t => `
+        <div class="bg-slate-900 border border-slate-850 hover:border-brand-500/40 p-5 rounded-2xl flex flex-col justify-between space-y-4 hover:shadow-lg transition-all">
+          <div>
+            <div class="flex items-center gap-2 mb-1.5">
+              <i class="fa-solid fa-table text-brand-400"></i>
+              <h4 class="font-mono font-bold text-base text-white">${t.name}</h4>
+            </div>
+            <p class="text-[11px] text-slate-400 leading-relaxed">${t.desc}</p>
+          </div>
+
+          <div class="border-t border-slate-800 pt-3 space-y-1.5">
+            <span class="text-[9px] uppercase font-bold text-slate-500 tracking-wider block">Columns Structure</span>
+            <div class="space-y-1 max-h-36 overflow-y-auto pr-1 text-[10px]">
+              ${t.cols.map(c => `
+                <div class="p-1.5 bg-slate-950 rounded flex flex-col gap-0.5 border border-slate-850">
+                  <div class="flex items-center justify-between">
+                    <span class="font-mono text-white font-semibold">${c.name}</span>
+                    <span class="font-mono text-[9px] text-brand-400">${c.type}</span>
+                  </div>
+                  <span class="text-[9px] text-slate-500">${c.d}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function filterDbCards(val) {
+      renderDbCards(val);
+    }
+
+    function clearDbFilter() {
+      document.getElementById('db-search').value = '';
+      renderDbCards();
+    }
+
+    // Simulated network change actions
+    function changeSimState(state) {
+      currentSimState = state;
+      document.querySelectorAll('.sim-pill').forEach(btn => {
+        btn.className = "sim-pill w-full flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-slate-500 transition-all";
+      });
+
+      const activeBtn = document.getElementById(`sim-state-${state}`);
+      const badge = document.getElementById('screen-status-badge');
+      const bannerOffline = document.getElementById('screen-banner-offline');
+      const bannerSlow = document.getElementById('screen-banner-slow');
+      const logs = document.getElementById('sim-logs');
+
+      if (state === 'online') {
+        activeBtn.className = "sim-pill w-full flex items-center justify-between p-3 rounded-xl bg-slate-950 border-2 border-neon-green transition-all";
+        badge.className = "px-2 py-0.5 rounded bg-neon-green/10 text-neon-green border border-neon-green/20 text-[10px] font-bold";
+        badge.innerText = 'ONLINE';
+        bannerOffline.classList.add('hidden');
+        bannerSlow.classList.add('hidden');
+        logs.innerHTML = '[11:05:12] connection_changed: online.<br>[11:05:13] WebSockets restored.';
+      } else if (state === 'slow') {
+        activeBtn.className = "sim-pill w-full flex items-center justify-between p-3 rounded-xl bg-slate-950 border-2 border-neon-amber transition-all";
+        badge.className = "px-2 py-0.5 rounded bg-neon-amber/10 text-neon-amber border border-neon-amber/20 text-[10px] font-bold";
+        badge.innerText = 'SLOW (3G)';
+        bannerOffline.classList.add('hidden');
+        bannerSlow.classList.remove('hidden');
+        logs.innerHTML = '[11:06:44] latency > 1400ms.<br>[11:06:45] API queue throttle enabled.';
+      } else if (state === 'offline') {
+        activeBtn.className = "sim-pill w-full flex items-center justify-between p-3 rounded-xl bg-slate-950 border-2 border-neon-red transition-all";
+        badge.className = "px-2 py-0.5 rounded bg-neon-red/10 text-neon-red border border-neon-red/20 text-[10px] font-bold";
+        badge.innerText = 'OFFLINE';
+        bannerOffline.classList.remove('hidden');
+        bannerSlow.classList.add('hidden');
+        logs.innerHTML = '[11:10:02] connection_changed: offline.<br>[11:10:03] Servicing from cache memory.';
+      }
+
+      document.getElementById('sim-response-console').innerText = `Simulated connection state set to ${state}. Choose a GET or POST actions in the shell view to inspect responses.`;
+    }
+
+    // Run simulated actions
+    function runSimulatedAction(type) {
+      const consoleEl = document.getElementById('sim-response-console');
+
+      if (type === 'get') {
+        if (currentSimState === 'online') {
+          consoleEl.innerHTML = `
+            <span class="text-neon-green font-bold">[200 OK]</span> Successfully loaded lesson calendar.<br>
+            <span class="text-slate-500 font-semibold text-[10px]">Response time: 94ms. Direct connection to database.</span>
+          `;
+        } else if (currentSimState === 'slow') {
+          consoleEl.innerHTML = `
+            <span class="text-neon-amber font-bold">[200 OK (SLOW)]</span> Loaded lesson calendar.<br>
+            <span class="text-slate-500 font-semibold text-[10px]">Response time: 1480ms. ioredis session context returned.</span>
+          `;
+        } else if (currentSimState === 'offline') {
+          consoleEl.innerHTML = `
+            <span class="text-brand-400 font-bold">[OFFLINE CACHE]</span> Loaded lesson calendar.<br>
+            <span class="text-slate-500 font-semibold text-[10px]">Response time: 4ms. Serviced directly from browser memory buffer context.</span>
+          `;
+        }
+      } else if (type === 'post') {
+        if (currentSimState === 'online') {
+          consoleEl.innerHTML = `
+            <span class="text-neon-green font-bold">[201 CREATED]</span> Attendance records saved successfully.<br>
+            <span class="text-slate-500 font-semibold text-[10px]">school_id policy check passes. Relational updates triggered.</span>
+          `;
+        } else if (currentSimState === 'slow') {
+          consoleEl.innerHTML = `
+            <span class="text-neon-amber font-bold">[QUEUED MUTATION]</span> Throttling write request...<br>
+            <span class="text-slate-500 font-semibold text-[10px]">Sliding request budget exceeded. PlatformGuard scheduling retry.</span>
+          `;
+        } else if (currentSimState === 'offline') {
+          consoleEl.innerHTML = `
+            <span class="text-neon-red font-bold">[BLOCKED MUTATION]</span> Failed to execute write.<br>
+            <span class="text-rose-500 font-semibold text-[10px]">OfflineStatusProvider blocked write to protect table row isolation.</span>
+          `;
+        }
+      }
+    }
+
+
+    // Render API Explorer routes
+    function renderApiCards() {
+      const search = document.getElementById('api-search').value.toLowerCase();
+      const cat = document.getElementById('api-cat-filter').value;
+      const container = document.getElementById('api-cards-container');
+
+      const filtered = apiRoutes.filter(r => {
+        const matchesCat = cat === 'all' || r.cat === cat;
+        const matchesSearch = r.path.toLowerCase().includes(search) || 
+                              r.desc.toLowerCase().includes(search) ||
+                              r.ctx.toLowerCase().includes(search) ||
+                              r.params.toLowerCase().includes(search);
+        return matchesCat && matchesSearch;
+      });
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-12 text-slate-500 bg-slate-900/10 border border-slate-800 rounded-xl">
+            <i class="fa-solid fa-server-slash text-2xl mb-2"></i>
+            <p class="text-xs font-semibold">No matching endpoints found.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = filtered.map((r, idx) => {
+        let methodBadge = '';
+        if (r.method === 'GET') methodBadge = 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+        else if (r.method === 'POST') methodBadge = 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20';
+
+        const rawJson = JSON.stringify(r.resp, null, 2);
+
+        return `
+          <div class="bg-slate-900 border border-slate-850 rounded-xl overflow-hidden">
+            <button onclick="toggleApiDetails(${idx})" class="w-full flex items-center justify-between p-4 text-left hover:bg-slate-850 transition-all focus:outline-none">
+              <div class="flex items-center gap-3">
+                <span class="px-2 py-0.5 rounded font-mono text-[10px] font-bold border ${methodBadge}">${r.method}</span>
+                <span class="font-mono text-xs text-white font-semibold">${r.path}</span>
+              </div>
+              <div class="flex items-center gap-3 text-xs text-slate-400">
+                <span class="hidden md:inline bg-slate-950 px-2 py-0.5 rounded font-mono text-[9px] text-slate-500">${r.ctx}</span>
+                <i class="fa-solid fa-chevron-down text-slate-500 transform transition-transform" id="api-icon-${idx}"></i>
+              </div>
+            </button>
+
+            <!-- Collapsible details box -->
+            <div id="api-body-${idx}" class="hidden border-t border-slate-850 p-5 bg-slate-950/40 space-y-4">
+              <p class="text-xs text-slate-400 leading-relaxed">${r.desc}</p>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div class="p-3 bg-slate-950 rounded border border-slate-850">
+                  <span class="text-[9px] uppercase font-bold text-slate-500 block mb-1">Route Context Filter</span>
+                  <span class="font-mono text-neon-blue font-semibold">${r.ctx}</span>
+                </div>
+                <div class="p-3 bg-slate-950 rounded border border-slate-850">
+                  <span class="text-[9px] uppercase font-bold text-slate-500 block mb-1">Query/Body parameters</span>
+                  <span class="font-mono text-slate-300 font-semibold">${r.params}</span>
+                </div>
+              </div>
+
+              <!-- Mock JSON pre block -->
+              <div class="space-y-1">
+                <div class="flex items-center justify-between bg-slate-900 px-4 py-1.5 rounded-t-lg border-x border-t border-slate-850">
+                  <span class="text-[9px] uppercase font-bold text-slate-400"><i class="fa-solid fa-terminal mr-1.5"></i>Mock Response Structure</span>
+                  <button onclick="copyToClipboard('json-pre-${idx}')" class="text-[10px] text-slate-400 hover:text-white flex items-center gap-1"><i class="fa-solid fa-copy"></i> Copy JSON</button>
+                </div>
+                <pre id="json-pre-${idx}" class="p-4 bg-slate-950 text-[10px] font-mono text-brand-300 overflow-x-auto rounded-b-lg border-x border-b border-slate-850 whitespace-pre">${rawJson}</pre>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Toggle API Collapsible Box
+    function toggleApiDetails(idx) {
+      const body = document.getElementById(`api-body-${idx}`);
+      const icon = document.getElementById(`api-icon-${idx}`);
+      const isHidden = body.classList.contains('hidden');
+
+      document.querySelectorAll('[id^="api-body-"]').forEach(b => b.classList.add('hidden'));
+      document.querySelectorAll('[id^="api-icon-"]').forEach(i => i.classList.remove('rotate-180'));
+
+      if (isHidden) {
+        body.classList.remove('hidden');
+        icon.classList.add('rotate-180');
+      }
+    }
+
+    function filterApiCards() {
+      renderApiCards();
+    }
+
+    // Copy element content to clipboard
+    function copyToClipboard(id) {
+      const txt = document.getElementById(id).innerText;
+      navigator.clipboard.writeText(txt).then(() => {
+        const toast = document.getElementById('toast');
+        toast.classList.remove('translate-y-24', 'opacity-0');
+        toast.classList.add('translate-y-0', 'opacity-100');
+
+        setTimeout(() => {
+          toast.classList.add('translate-y-24', 'opacity-0');
+          toast.classList.remove('translate-y-0', 'opacity-100');
+        }, 3000);
+      });
+    }
+
+    // Global filtering system for Sidebar search
+    function handleGlobalSearch(query) {
+      const q = query.toLowerCase();
+      const clearBtn = document.getElementById('clear-search-btn');
+
+      if (q) {
+        clearBtn.classList.remove('hidden');
+      } else {
+        clearBtn.classList.add('hidden');
+      }
+
+      // Filter sidebar nav items list
+      document.querySelectorAll('.toc-link').forEach(link => {
+        const txt = link.innerText.toLowerCase();
+        if (txt.includes(q)) {
+          link.style.opacity = '1';
+        } else if (q !== '') {
+          link.style.opacity = '0.3';
+        } else {
+          link.style.opacity = '1';
+        }
+      });
+
+      // Filter main document sections based on query keyword matches
+      document.querySelectorAll('section').forEach(sec => {
+        const txt = sec.innerText.toLowerCase();
+        if (txt.includes(q)) {
+          sec.style.display = '';
+        } else if (q !== '') {
+          sec.style.display = 'none';
+        } else {
+          sec.style.display = '';
+        }
+      });
+    }
+
+    function clearGlobalSearch() {
+      document.getElementById('global-search').value = '';
+      handleGlobalSearch('');
+    }
+
+    // Run setups on boot
+    document.addEventListener('DOMContentLoaded', () => {
+      // Set saved theme values
+      const savedTheme = localStorage.getItem('theme') || 'dark';
+      const html = document.documentElement;
+      if (savedTheme === 'light') {
+        html.classList.remove('dark');
+        html.classList.add('light');
+      }
+
+      // Boot views
+      changeActiveJourney('student');
+      renderDbCards();
+      renderApiCards();
+      changeSimState('online');
+    });
+  </script>
+</body>
+</html>

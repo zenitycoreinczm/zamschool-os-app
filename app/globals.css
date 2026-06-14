@@ -1,0 +1,312 @@
+@import "tailwindcss";
+
+/* ─── Design tokens (enterprise workspace) ─────────────────────────────────── */
+@theme {
+    /* Brand palette (legacy lama names preserved for charts) */
+    --color-lamaSky: #7dd3fc;
+    --color-lamaSkyLight: #e0f2fe;
+    --color-lamaPurple: #a5b4fc;
+    --color-lamaPurpleLight: #eef2ff;
+    --color-lamaYellow: #fcd34d;
+    --color-lamaYellowLight: #fef9c3;
+
+    /* Workspace surfaces */
+    --color-workspace-canvas: #f4f6f9;
+    --color-workspace-sidebar: #f8f9fb;
+    --color-workspace-foreground: #0f172a;
+    --color-workspace-muted: #64748b;
+    --color-workspace-border: rgb(226 232 240 / 0.92);
+    --color-workspace-border-strong: rgb(203 213 225 / 0.95);
+
+    /* Brand actions */
+    --color-brand: #0284c7;
+    --color-brand-hover: #0369a1;
+    --color-brand-muted: #e0f2fe;
+
+    /* Role stat tiles */
+    --color-stat-admin: #e0e7ff;
+    --color-stat-teacher: #fef3c7;
+    --color-stat-student: #ddd6fe;
+    --color-stat-parent: #ffedd5;
+
+    /* Radius scale (4px grid) */
+    --radius-workspace-xs: 0.5rem;
+    --radius-workspace-sm: 0.625rem;
+    --radius-workspace-md: 0.75rem;
+    --radius-workspace-lg: 1rem;
+    --radius-workspace-xl: 1.25rem;
+    --radius-workspace-2xl: 1.5rem;
+
+    /* Elevation */
+    --shadow-workspace-xs: 0 1px 2px rgb(15 23 42 / 0.04);
+    --shadow-workspace-sm:
+        0 1px 2px rgb(15 23 42 / 0.05), 0 4px 10px rgb(15 23 42 / 0.04);
+    --shadow-workspace-md:
+        0 2px 4px rgb(15 23 42 / 0.04), 0 8px 20px rgb(15 23 42 / 0.06);
+    --shadow-workspace-lg:
+        0 4px 8px rgb(15 23 42 / 0.05), 0 16px 32px rgb(15 23 42 / 0.08);
+    --shadow-workspace-focus: 0 0 0 3px rgb(14 165 233 / 0.22);
+
+    /* Motion */
+    --ease-workspace-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-workspace-in-out: cubic-bezier(0.45, 0, 0.55, 1);
+    --duration-workspace-fast: 150ms;
+    --duration-workspace-normal: 220ms;
+    --duration-workspace-slow: 380ms;
+}
+
+/* ─── Base ─────────────────────────────────────────────────────────────────── */
+html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    scroll-behavior: smooth;
+}
+
+body {
+    background: var(--color-workspace-canvas);
+    color: var(--color-workspace-foreground);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "tnum";
+}
+
+::selection {
+    background: #0ea5e9;
+    color: #ffffff;
+}
+
+:focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-workspace-focus);
+}
+
+/* ─── Typography utilities ─────────────────────────────────────────────────── */
+.ws-eyebrow {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    line-height: 1.2;
+}
+
+.ws-tabular {
+    font-variant-numeric: tabular-nums;
+}
+
+/* ─── Motion ───────────────────────────────────────────────────────────────── */
+.animate-enter-up {
+    opacity: 0;
+    transform: translateY(12px);
+    animation: enter-up var(--duration-workspace-slow) var(--ease-workspace-out)
+        forwards;
+}
+
+.delay-1 {
+    animation-delay: 0.06s;
+}
+.delay-2 {
+    animation-delay: 0.12s;
+}
+.delay-3 {
+    animation-delay: 0.18s;
+}
+.delay-4 {
+    animation-delay: 0.24s;
+}
+.delay-5 {
+    animation-delay: 0.3s;
+}
+
+@keyframes enter-up {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes workspace-pulse-ring {
+    0%,
+    100% {
+        opacity: 0.35;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.12;
+        transform: scale(1.08);
+    }
+}
+
+.workspace-loader-ring {
+    animation: workspace-pulse-ring 1.8s var(--ease-workspace-in-out) infinite;
+}
+
+@keyframes workspace-loader-dot-bounce {
+    0%,
+    70%,
+    100% {
+        transform: translateY(0) scale(1);
+        opacity: 0.5;
+    }
+    35% {
+        transform: translateY(-5px) scale(1.08);
+        opacity: 1;
+    }
+}
+
+.workspace-loader-dot {
+    animation: workspace-loader-dot-bounce 1.05s var(--ease-workspace-in-out)
+        infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .workspace-loader-dot {
+        animation: none;
+        opacity: 0.85;
+    }
+}
+
+/* ─── React Calendar ───────────────────────────────────────────────────────── */
+.react-calendar {
+    width: 100% !important;
+    border: none !important;
+    font-family: inherit !important;
+}
+
+.react-calendar__navigation__label__labelText {
+    font-weight: 600;
+}
+
+.react-calendar__tile--active {
+    background-color: var(--color-lamaSkyLight) !important;
+    color: var(--color-workspace-foreground) !important;
+    border-radius: var(--radius-workspace-sm) !important;
+}
+
+.react-calendar__tile--now {
+    background-color: var(--color-lamaPurpleLight) !important;
+    border-radius: var(--radius-workspace-sm) !important;
+}
+
+/* ─── React Big Calendar ───────────────────────────────────────────────────── */
+.rbc-btn-group > button {
+    color: var(--color-workspace-muted);
+}
+
+.rbc-btn-group > button.rbc-active {
+    background-color: var(--color-lamaPurpleLight);
+    color: var(--color-workspace-foreground);
+}
+
+.rbc-toolbar-label {
+    font-weight: 600;
+}
+
+.rbc-time-view,
+.rbc-time-header,
+.rbc-time-content,
+.rbc-time-header-content,
+.rbc-day-bg,
+.rbc-timeslot-group,
+.rbc-time-slot {
+    border-color: var(--color-workspace-border);
+}
+
+.rbc-event {
+    background-color: var(--color-lamaSkyLight);
+    color: var(--color-workspace-foreground);
+    border: none;
+    border-radius: var(--radius-workspace-xs);
+}
+
+/* ─── Workspace shell grid ─────────────────────────────────────────────────── */
+.zamschool-workspace-shell {
+    display: grid;
+    width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    background: var(--color-workspace-canvas);
+}
+
+@media (min-width: 1024px) {
+    .zamschool-workspace-shell {
+        grid-template-columns: 14rem minmax(0, 1fr);
+    }
+}
+
+.zamschool-workspace-shell__sidebar {
+    grid-column: 1;
+    grid-row: 1;
+    width: 14rem;
+    min-width: 14rem;
+    max-width: 14rem;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--color-workspace-sidebar);
+    border-right: 1px solid var(--color-workspace-border);
+}
+
+@media (max-width: 1023px) {
+    .zamschool-workspace-shell__sidebar {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 40;
+        box-shadow: var(--shadow-workspace-lg);
+    }
+}
+
+.zamschool-workspace-shell__main {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+}
+
+/* Header bar must stack above scrollable page content so search/inbox/menus are not buried. */
+.zamschool-workspace-shell__header {
+    position: relative;
+    z-index: 60;
+    isolation: isolate;
+    flex-shrink: 0;
+    overflow: visible;
+}
+
+.zamschool-workspace-popover {
+    z-index: 70;
+}
+
+@media (min-width: 1024px) {
+    .zamschool-workspace-shell__main {
+        grid-column: 2;
+    }
+}
+
+.zamschool-workspace-main-scroll {
+    position: relative;
+    z-index: 0;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scroll-behavior: smooth;
+}
+
+.zamschool-workspace-main-inner {
+    margin-inline: auto;
+    width: 100%;
+    max-width: 90rem;
+    padding-inline: clamp(1rem, 2vw, 1.5rem);
+    padding-bottom: clamp(1.25rem, 3vw, 2rem);
+}
+
+@media (min-width: 1024px) {
+    .zamschool-workspace-main-inner {
+        padding-bottom: 1.5rem;
+    }
+}

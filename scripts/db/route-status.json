@@ -1,0 +1,326 @@
+[
+  {
+    "route": "/",
+    "file": "webapp/app/page.tsx",
+    "status": "ERR",
+    "location": "timeout"
+  },
+  {
+    "route": "/admin",
+    "file": "webapp/app/(dashboard)/admin/page.tsx",
+    "status": "ERR",
+    "location": "timeout"
+  },
+  {
+    "route": "/app/admin/academic",
+    "file": "webapp/app/app/admin/academic/page.tsx",
+    "status": "ERR",
+    "location": "timeout"
+  },
+  {
+    "route": "/app/admin/assignments",
+    "file": "webapp/app/app/admin/assignments/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fapp%2Fadmin%2Fassignments"
+  },
+  {
+    "route": "/app/admin/audit",
+    "file": "webapp/app/app/admin/audit/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fapp%2Fadmin%2Faudit"
+  },
+  {
+    "route": "/app/admin/classes",
+    "file": "webapp/app/app/admin/classes/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fapp%2Fadmin%2Fclasses"
+  },
+  {
+    "route": "/app/admin/fees",
+    "file": "webapp/app/app/admin/fees/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fapp%2Fadmin%2Ffees"
+  },
+  {
+    "route": "/app/admin/finance",
+    "file": "webapp/app/app/admin/finance/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fapp%2Fadmin%2Ffinance"
+  },
+  {
+    "route": "/app/admin/grading-scales",
+    "file": "webapp/app/app/admin/grading-scales/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fapp%2Fadmin%2Fgrading-scales"
+  },
+  {
+    "route": "/app/admin/school",
+    "file": "webapp/app/app/admin/school/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fapp%2Fadmin%2Fschool"
+  },
+  {
+    "route": "/app/admin/subjects",
+    "file": "webapp/app/app/admin/subjects/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fapp%2Fadmin%2Fsubjects"
+  },
+  {
+    "route": "/app/admin/timetable",
+    "file": "webapp/app/app/admin/timetable/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fapp%2Fadmin%2Ftimetable"
+  },
+  {
+    "route": "/app/admin/users",
+    "file": "webapp/app/app/admin/users/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fapp%2Fadmin%2Fusers"
+  },
+  {
+    "route": "/app/announcements",
+    "file": "webapp/app/app/announcements/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fapp%2Fannouncements"
+  },
+  {
+    "route": "/app/dashboard",
+    "file": "webapp/app/app/dashboard/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fapp%2Fdashboard"
+  },
+  {
+    "route": "/app/events",
+    "file": "webapp/app/app/events/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fapp%2Fevents"
+  },
+  {
+    "route": "/app/messages",
+    "file": "webapp/app/app/messages/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fapp%2Fmessages"
+  },
+  {
+    "route": "/app/notifications",
+    "file": "webapp/app/app/notifications/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fapp%2Fnotifications"
+  },
+  {
+    "route": "/app/profile",
+    "file": "webapp/app/app/profile/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fapp%2Fprofile"
+  },
+  {
+    "route": "/app/settings",
+    "file": "webapp/app/app/settings/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fapp%2Fsettings"
+  },
+  {
+    "route": "/app/teacher",
+    "file": "webapp/app/app/teacher/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fapp%2Fteacher"
+  },
+  {
+    "route": "/dashboard",
+    "file": "webapp/app/dashboard/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fapp%2Fdashboard"
+  },
+  {
+    "route": "/forgot-password",
+    "file": "webapp/app/forgot-password/page.tsx",
+    "status": "ERR",
+    "location": "timeout"
+  },
+  {
+    "route": "/join",
+    "file": "webapp/app/join/page.tsx",
+    "status": "ERR",
+    "location": "timeout"
+  },
+  {
+    "route": "/list/announcements",
+    "file": "webapp/app/(dashboard)/list/announcements/page.tsx",
+    "status": "ERR",
+    "location": "timeout"
+  },
+  {
+    "route": "/list/assignments",
+    "file": "webapp/app/(dashboard)/list/assignments/page.tsx",
+    "status": 200,
+    "location": ""
+  },
+  {
+    "route": "/list/attendance",
+    "file": "webapp/app/(dashboard)/list/attendance/page.tsx",
+    "status": 200,
+    "location": ""
+  },
+  {
+    "route": "/list/classes",
+    "file": "webapp/app/(dashboard)/list/classes/page.tsx",
+    "status": 200,
+    "location": ""
+  },
+  {
+    "route": "/list/events",
+    "file": "webapp/app/(dashboard)/list/events/page.tsx",
+    "status": 200,
+    "location": ""
+  },
+  {
+    "route": "/list/exams",
+    "file": "webapp/app/(dashboard)/list/exams/page.tsx",
+    "status": 200,
+    "location": ""
+  },
+  {
+    "route": "/list/lessons",
+    "file": "webapp/app/(dashboard)/list/lessons/page.tsx",
+    "status": 200,
+    "location": ""
+  },
+  {
+    "route": "/list/messages",
+    "file": "webapp/app/(dashboard)/list/messages/page.tsx",
+    "status": 200,
+    "location": ""
+  },
+  {
+    "route": "/list/parents",
+    "file": "webapp/app/(dashboard)/list/parents/page.tsx",
+    "status": 200,
+    "location": ""
+  },
+  {
+    "route": "/list/results",
+    "file": "webapp/app/(dashboard)/list/results/page.tsx",
+    "status": 200,
+    "location": ""
+  },
+  {
+    "route": "/list/students",
+    "file": "webapp/app/(dashboard)/list/students/page.tsx",
+    "status": 200,
+    "location": ""
+  },
+  {
+    "route": "/list/students/[id]",
+    "file": "webapp/app/(dashboard)/list/students/[id]/page.tsx",
+    "status": "ERR",
+    "location": "timeout"
+  },
+  {
+    "route": "/list/subjects",
+    "file": "webapp/app/(dashboard)/list/subjects/page.tsx",
+    "status": 200,
+    "location": ""
+  },
+  {
+    "route": "/list/teachers",
+    "file": "webapp/app/(dashboard)/list/teachers/page.tsx",
+    "status": "ERR",
+    "location": "timeout"
+  },
+  {
+    "route": "/list/teachers/[id]",
+    "file": "webapp/app/(dashboard)/list/teachers/[id]/page.tsx",
+    "status": "ERR",
+    "location": "timeout"
+  },
+  {
+    "route": "/login",
+    "file": "webapp/app/login/page.tsx",
+    "status": "ERR",
+    "location": "timeout"
+  },
+  {
+    "route": "/parent",
+    "file": "webapp/app/(dashboard)/parent/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fparent"
+  },
+  {
+    "route": "/payments",
+    "file": "webapp/app/(dashboard)/payments/page.tsx",
+    "status": "ERR",
+    "location": "timeout"
+  },
+  {
+    "route": "/payments/fees",
+    "file": "webapp/app/(dashboard)/payments/fees/page.tsx",
+    "status": "ERR",
+    "location": "timeout"
+  },
+  {
+    "route": "/payments/students",
+    "file": "webapp/app/(dashboard)/payments/students/page.tsx",
+    "status": "ERR",
+    "location": "timeout"
+  },
+  {
+    "route": "/profile",
+    "file": "webapp/app/(dashboard)/profile/page.tsx",
+    "status": "ERR",
+    "location": "timeout"
+  },
+  {
+    "route": "/register",
+    "file": "webapp/app/register/page.tsx",
+    "status": "ERR",
+    "location": "timeout"
+  },
+  {
+    "route": "/settings",
+    "file": "webapp/app/(dashboard)/settings/page.tsx",
+    "status": "ERR",
+    "location": "timeout"
+  },
+  {
+    "route": "/student",
+    "file": "webapp/app/(dashboard)/student/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fstudent"
+  },
+  {
+    "route": "/teacher",
+    "file": "webapp/app/(dashboard)/teacher/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fteacher"
+  },
+  {
+    "route": "/teacher/assignments",
+    "file": "webapp/app/(dashboard)/teacher/assignments/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fteacher%2Fassignments"
+  },
+  {
+    "route": "/teacher/classes",
+    "file": "webapp/app/(dashboard)/teacher/classes/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fteacher%2Fclasses"
+  },
+  {
+    "route": "/teacher/messages",
+    "file": "webapp/app/(dashboard)/teacher/messages/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fteacher%2Fmessages"
+  },
+  {
+    "route": "/teacher/results",
+    "file": "webapp/app/(dashboard)/teacher/results/page.tsx",
+    "status": 307,
+    "location": "/login?redirectTo=%2Fteacher%2Fresults"
+  },
+  {
+    "route": "/verify-email",
+    "file": "webapp/app/verify-email/page.tsx",
+    "status": "ERR",
+    "location": "timeout"
+  }
+]

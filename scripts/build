@@ -1,0 +1,440 @@
+// Build script for remaining API routes
+const fs = require("fs");
+const path = require("path");
+
+function writeFile(filePath, content) {
+  const dir = path.dirname(filePath);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(filePath, content, "utf8");
+  console.log(`Created: ${filePath}`);
+}
+
+// ── 4/9: Staff Invitation System ──
+
+writeFile("app/api/admin/staff/invite/route.ts", `import { NextResponse } from "next/server";
+import { z } from "zod";
+import { requireAdminContext } from "@/lib/server-auth";
+import { applyRateLimit, getClientIp, parseJsonWithSchema, safeErrorMessage } from "@/lib/server-guards";
+import { supabaseAdmin } from "@/lib/supabase";
+import { emailService } from "@/lib/email";
+import { randomBytes } from "crypto";
+
+function generateToken(): string {
+  return randomBytes(32).toString("hex");
+}
+
+const inviteSchema = z.object({
+  email: z.string().email("Invalid email address").max(255),
+  firstName: z.string().min(1, "First name is required").max(100),
+  lastName: z.string().min(1, "Last name is required").max(100),
+  role: z.enum(["TEACHER", "BURSAR", "PAYMENTS", "ACADEMIC_ADMIN", "HR_ADMIN", "ICT_ADMIN", "DISCIPLINE_ADMIN", "GUIDANCE_OFFICE"]),
+  phone: z.string().max(30).optional(),
+});
+
+export async function POST(req: Request) {
+  try {
+    const access = await requireAdminContext(req);
+    if (!access.ok) return access.response;
+
+    const ip = getClientIp(req);
+    const rate = await applyRateLimit({
+      key: \`invite-staff:\${ip}\`,
+      limit: 30,
+      windowMs: 60_000,
+      failOpen: true,
+    });
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { error: "Too many invitations. Please wait before sending more." },
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
+      );
+    }
+
+    const params = await parseJsonWithSchema(req, inviteSchema);
+    const schoolId = access.context.schoolId;
+    const invitedBy = access.context.userId;
+    const token = generateToken();
+
+    // Check if email already has a profile in this school
+    const { data: existingProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("id")
+      .eq("school_id", schoolId)
+      .eq("email", params.email)
+      .maybeSingle();
+
+    if (existingProfile) {
+      return NextResponse.json(
+        { error: "A staff member with this email already exists in your school." },
+        { status: 400 },
+      );
+    }
+
+    // Check for existing pending invitation
+    const { data: existingInvite } = await supabaseAdmin
+      .from("staff_invitations")
+      .select("id, status")
+      .eq("email", params.email)
+      .eq("school_id", schoolId)
+      .eq("status", "pending")
+      .maybeSingle();
+
+    if (existingInvite) {
+      return NextResponse.json(
+        { error: "A pending invitation already exists for this email." },
+        { status: 400 },
+      );
+    }
+
+    const { error } = await supabaseAdmin.from("staff_invitations").insert({
+      email: params.email,
+      first_name: params.firstName,
+      last_name: params.lastName,
+      role: params.role,
+      school_id: schoolId,
+      invited_by: invitedBy,
+      token,
+      status: "pending",
+    });
+
+    if (error) {
+      console.error("[invite-staff] DB error:", error);
+      return NextResponse.json(
+        { error: "Failed to create staff invitation." },
+        { status: 500 },
+      );
+    }
+
+    // Send invitation email
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || "http://localhost:3000";
+    const inviteUrl = \`\${baseUrl}/accept-invitation?token=\${token}&email=\${encodeURIComponent(params.email)}\`;
+
+    const emailResult = await emailService.sendEmail({
+      to: params.email,
+      subject: \`You're invited to join ZamSchool by \${access.context.userEmail || "your school"}\`,
+      html: (() => {
+        const roleName = params.role.replace(/_/g, " ");
+        return \`<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px">
+<div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:30px;border-radius:10px;text-align:center;margin-bottom:30px">
+<h1 style="color:white;margin:0;font-size:28px">ZamSchool</h1>
+<p style="color:rgba(255,255,255,0.9);margin:10px 0 0 0">Staff Invitation</p>
+</div>
+<div style="background:#f8f9fa;padding:30px;border-radius:10px;margin-bottom:20px">
+<h2 style="color:#333">Hello \${params.firstName},</h2>
+<p style="color:#666;font-size:16px;line-height:1.5">You have been invited to join as <strong>\${roleName}</strong>.</p>
+<p style="color:#666;font-size:16px;line-height:1.5">Click below to accept:</p>
+<div style="text-align:center;margin:30px 0">
+<a href="\${inviteUrl}" style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;padding:14px 32px;text-decoration:none;border-radius:8px;font-size:16px;font-weight:bold;display:inline-block">Accept Invitation</a>
+</div>
+<p style="color:#999;font-size:14px">This invitation link expires in 7 days.</p>
+</div>
+</div>\`;
+      })(),
+      text: \`ZamSchool Staff Invitation\\n\\nHello \${params.firstName},\\n\\nYou have been invited to join as \${params.role.replace(/_/g, " ")}.\\n\\nAccept: \${inviteUrl}\\n\\nThis link expires in 7 days.\`,
+    });
+
+    return NextResponse.json({
+      success: true,
+      emailSent: emailResult.success,
+      data: { email: params.email, role: params.role, status: "pending" },
+    });
+  } catch (err: unknown) {
+    console.error("[invite-staff] Error:", safeErrorMessage(err, "Unknown error"));
+    return NextResponse.json(
+      { error: safeErrorMessage(err, "Failed to send staff invitation.") },
+      { status: 500 },
+    );
+  }
+}
+`);
+
+// ── List staff invitations ──
+
+writeFile("app/api/admin/staff/invitations/route.ts", `import { NextResponse } from "next/server";
+import { requireAdminContext } from "@/lib/server-auth";
+import { supabaseAdmin } from "@/lib/supabase";
+import { safeErrorMessage } from "@/lib/server-guards";
+
+export async function GET(req: Request) {
+  try {
+    const access = await requireAdminContext(req);
+    if (!access.ok) return access.response;
+
+    const schoolId = access.context.schoolId;
+    const { searchParams } = new URL(req.url);
+    const status = searchParams.get("status") || "pending";
+    const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 200);
+    const offset = parseInt(searchParams.get("offset") || "0");
+
+    let query = supabaseAdmin
+      .from("staff_invitations")
+      .select("id, email, first_name, last_name, role, status, created_at, invited_by", { count: "exact" })
+      .eq("school_id", schoolId)
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (status !== "all") {
+      query = query.eq("status", status);
+    }
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      console.error("[list-staff-invitations] DB error:", error);
+      return NextResponse.json({ error: "Failed to list invitations." }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: data || [],
+      total: count ?? 0,
+      offset,
+      limit,
+    });
+  } catch (err: unknown) {
+    console.error("[list-staff-invitations] Error:", safeErrorMessage(err, "Unknown error"));
+    return NextResponse.json({ error: safeErrorMessage(err, "Failed to list invitations.") }, { status: 500 });
+  }
+}
+`);
+
+// ── Revoke/delete staff invitation ──
+
+writeFile("app/api/admin/staff/invitations/[id]/route.ts", `import { NextResponse } from "next/server";
+import { requireAdminContext } from "@/lib/server-auth";
+import { supabaseAdmin } from "@/lib/supabase";
+import { safeErrorMessage } from "@/lib/server-guards";
+
+export async function PUT(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const access = await requireAdminContext(_req);
+    if (!access.ok) return access.response;
+
+    const { id } = await params;
+    const schoolId = access.context.schoolId;
+
+    const { data: existing } = await supabaseAdmin
+      .from("staff_invitations")
+      .select("id, status, school_id")
+      .eq("id", id)
+      .eq("school_id", schoolId)
+      .maybeSingle();
+
+    if (!existing) {
+      return NextResponse.json({ error: "Invitation not found." }, { status: 404 });
+    }
+
+    if (existing.status !== "pending") {
+      return NextResponse.json({ error: "Only pending invitations can be revoked." }, { status: 400 });
+    }
+
+    const { error } = await supabaseAdmin
+      .from("staff_invitations")
+      .update({ status: "revoked", updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .eq("school_id", schoolId);
+
+    if (error) {
+      console.error("[revoke-staff-invitation] DB error:", error);
+      return NextResponse.json({ error: "Failed to revoke invitation." }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, message: "Invitation revoked." });
+  } catch (err: unknown) {
+    console.error("[revoke-staff-invitation] Error:", safeErrorMessage(err, "Unknown error"));
+    return NextResponse.json({ error: safeErrorMessage(err, "Failed to revoke invitation.") }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const access = await requireAdminContext(_req);
+    if (!access.ok) return access.response;
+
+    const { id } = await params;
+    const schoolId = access.context.schoolId;
+
+    const { error } = await supabaseAdmin
+      .from("staff_invitations")
+      .delete()
+      .eq("id", id)
+      .eq("school_id", schoolId)
+      .eq("status", "revoked");
+
+    if (error) {
+      console.error("[delete-staff-invitation] DB error:", error);
+      return NextResponse.json({ error: "Failed to delete invitation." }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, message: "Invitation deleted." });
+  } catch (err: unknown) {
+    console.error("[delete-staff-invitation] Error:", safeErrorMessage(err, "Unknown error"));
+    return NextResponse.json({ error: safeErrorMessage(err, "Failed to delete invitation.") }, { status: 500 });
+  }
+}
+`);
+
+// ── Accept invitation API (public) ──
+
+writeFile("app/api/accept-invitation/route.ts", `import { NextResponse } from "next/server";
+import { z } from "zod";
+import { applyRateLimit, getClientIp, parseJsonWithSchema, safeErrorMessage } from "@/lib/server-guards";
+import { supabaseAdmin } from "@/lib/supabase";
+
+const acceptSchema = z.object({
+  token: z.string().min(1),
+  email: z.string().email(),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+  phone: z.string().max(30).optional(),
+});
+
+export async function POST(req: Request) {
+  try {
+    const ip = getClientIp(req);
+    const rate = await applyRateLimit({
+      key: \`accept-invitation:\${ip}\`,
+      limit: 10,
+      windowMs: 60_000,
+      failOpen: true,
+    });
+    if (!rate.allowed) {
+      return NextResponse.json(
+        { error: "Too many attempts. Please wait before trying again." },
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
+      );
+    }
+
+    const params = await parseJsonWithSchema(req, acceptSchema);
+
+    // Find the invitation
+    const { data: invitation, error: inviteError } = await supabaseAdmin
+      .from("staff_invitations")
+      .select("id, email, first_name, last_name, role, school_id, token, status, created_at")
+      .eq("token", params.token)
+      .eq("email", params.email)
+      .eq("status", "pending")
+      .maybeSingle();
+
+    if (inviteError || !invitation) {
+      return NextResponse.json(
+        { error: "Invalid or expired invitation. Please contact your school administrator." },
+        { status: 400 },
+      );
+    }
+
+    // Check if invitation is older than 7 days
+    const createdAt = new Date(invitation.created_at);
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    if (createdAt < sevenDaysAgo) {
+      await supabaseAdmin
+        .from("staff_invitations")
+        .update({ status: "expired", updated_at: new Date().toISOString() })
+        .eq("id", invitation.id);
+
+      return NextResponse.json(
+        { error: "This invitation has expired." },
+        { status: 400 },
+      );
+    }
+
+    // Check if user already exists
+    const { data: existingUser } = await supabaseAdmin.auth.admin.listUsers();
+    const emailExists = existingUser?.users?.some(
+      (u) => u.email?.toLowerCase() === params.email.toLowerCase(),
+    );
+
+    let userId: string;
+    if (!emailExists) {
+      // Create the auth user
+      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+        email: params.email,
+        password: params.password,
+        email_confirm: true,
+        user_metadata: {
+          first_name: invitation.first_name,
+          last_name: invitation.last_name,
+        },
+      });
+
+      if (createError || !newUser.user) {
+        console.error("[accept-invitation] User creation error:", createError);
+        return NextResponse.json(
+          { error: "Failed to create account. Please try again." },
+          { status: 500 },
+        );
+      }
+      userId = newUser.user.id;
+    } else {
+      const existing = existingUser!.users!.find(
+        (u) => u.email?.toLowerCase() === params.email.toLowerCase(),
+      );
+      userId = existing!.id;
+
+      // Check if profile already exists for this school
+      const { data: existingProfile } = await supabaseAdmin
+        .from("profiles")
+        .select("id")
+        .eq("id", userId)
+        .eq("school_id", invitation.school_id)
+        .maybeSingle();
+
+      if (existingProfile) {
+        return NextResponse.json(
+          { error: "An account for this email already exists at this school." },
+          { status: 400 },
+        );
+      }
+    }
+
+    // Create the profile
+    const { error: profileError } = await supabaseAdmin.from("profiles").upsert({
+      id: userId,
+      email: params.email,
+      school_id: invitation.school_id,
+      role: invitation.role,
+      first_name: invitation.first_name,
+      last_name: invitation.last_name,
+      phone: params.phone || null,
+      status: "ACTIVE",
+    });
+
+    if (profileError) {
+      console.error("[accept-invitation] Profile error:", profileError);
+      return NextResponse.json(
+        { error: "Failed to create staff profile. Please contact support." },
+        { status: 500 },
+      );
+    }
+
+    // Mark invitation as accepted
+    await supabaseAdmin
+      .from("staff_invitations")
+      .update({
+        status: "accepted",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", invitation.id);
+
+    return NextResponse.json({
+      success: true,
+      message: "Invitation accepted. You can now sign in.",
+      data: { email: params.email, schoolId: invitation.school_id, role: invitation.role },
+    });
+  } catch (err: unknown) {
+    console.error("[accept-invitation] Error:", safeErrorMessage(err, "Unknown error"));
+    return NextResponse.json(
+      { error: safeErrorMessage(err, "Failed to accept invitation.") },
+      { status: 500 },
+    );
+  }
+}
+`);
+
+console.log("\\n=== Staff invitation routes created successfully ===");

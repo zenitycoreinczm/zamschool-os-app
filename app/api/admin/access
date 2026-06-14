@@ -1,0 +1,54 @@
+import { NextResponse } from "next/server";
+import { requireSuperAdminContext } from "@/lib/server-auth";
+import { supabaseAdmin } from "@/lib/supabase";
+import { safeErrorMessage } from "@/lib/server-guards";
+
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ code: string }> },
+) {
+  try {
+    const access = await requireSuperAdminContext(_req);
+    if (!access.ok) return access.response;
+
+    const { code } = await params;
+    if (!code || code.length !== 6) {
+      return NextResponse.json({ error: "Invalid access code." }, { status: 400 });
+    }
+
+    const { data: existing } = await supabaseAdmin
+      .from("access_codes")
+      .select("code, used_at")
+      .eq("code", code)
+      .maybeSingle();
+
+    if (!existing) {
+      return NextResponse.json({ error: "Access code not found." }, { status: 404 });
+    }
+
+    if (existing.used_at) {
+      return NextResponse.json(
+        { error: "Cannot delete an access code that has already been used." },
+        { status: 400 },
+      );
+    }
+
+    const { error } = await supabaseAdmin
+      .from("access_codes")
+      .delete()
+      .eq("code", code);
+
+    if (error) {
+      console.error("[revoke-access-code] DB error:", error);
+      return NextResponse.json({ error: "Failed to revoke access code." }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, message: "Access code revoked successfully." });
+  } catch (err: unknown) {
+    console.error("[revoke-access-code] Error:", safeErrorMessage(err, "Unknown error"));
+    return NextResponse.json(
+      { error: safeErrorMessage(err, "Failed to revoke access code.") },
+      { status: 500 },
+    );
+  }
+}
