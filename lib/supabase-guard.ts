@@ -2,9 +2,7 @@
  * Supabase Query Guard
  *
  * Wraps Supabase queries with budget management, rate-limit retry logic,
- * and error handling. Provides a drop-in wrapper for any Supabase
- * operation to ensure we stay within free-tier limits and gracefully
- * handle transient failures.
+ * and error handling. Uses connection pool for bursty traffic handling.
  *
  * Usage:
  *   const result = await withSupabaseGuard(
@@ -14,6 +12,7 @@
  */
 
 import { checkBudget, recordRequest } from "./supabase-request-budget";
+import { withConnection } from "./connection-pool";
 
 // ─── Retry Configuration ────────────────────────────────────────────────────
 
@@ -83,17 +82,19 @@ function computeBackoff(attempt: number): number {
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 /**
- * Execute a Supabase operation wrapped with budget checking, rate-limit
- * retry logic, and request tracking.
+ * Execute a Supabase operation wrapped with connection pool, budget checking,
+ * rate-limit retry logic, and request tracking.
  *
  * @param operation  - Async function that performs the Supabase query.
  * @param context    - Human-readable label for logging (e.g. function name).
  *
  * Automatically:
- * 1. Calls `checkBudget()` before executing the operation.
- * 2. Records the request via `recordRequest()` after completion.
- * 3. Retries up to 3 times with exponential backoff on 429 errors.
- * 4. Retries once after 1s on transient network errors.
+ * 1. Acquires a connection from the pool (handles 100+ concurrent users)
+ * 2. Calls `checkBudget()` before executing the operation
+ * 3. Records the request via `recordRequest()` after completion
+ * 4. Retries up to 3 times with exponential backoff on 429 errors
+ * 5. Retries once after 1s on transient network errors
+ * 6. Releases the connection back to the pool
  *
  * @returns The result of the operation.
  * @throws The last error encountered if all retries are exhausted.
@@ -102,64 +103,66 @@ export async function withSupabaseGuard<T>(
   operation: () => Promise<T>,
   context: string,
 ): Promise<T> {
-  let lastError: unknown;
+  return withConnection(async () => {
+    let lastError: unknown;
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      // 1. Check budget before executing
-      await checkBudget();
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        // 1. Check budget before executing
+        await checkBudget();
 
-      // 2. Execute the operation
-      const result = await operation();
+        // 2. Execute the operation
+        const result = await operation();
 
-      // 3. Record the request after success
-      recordRequest();
+        // 3. Record the request after success
+        recordRequest();
 
-      return result;
-    } catch (err) {
-      lastError = err;
+        return result;
+      } catch (err) {
+        lastError = err;
 
-      // 4. Handle rate limit (429) with exponential backoff
-      if (isRateLimitError(err)) {
-        if (attempt < MAX_RETRIES) {
-          const delay = computeBackoff(attempt);
+        // 4. Handle rate limit (429) with exponential backoff
+        if (isRateLimitError(err)) {
+          if (attempt < MAX_RETRIES) {
+            const delay = computeBackoff(attempt);
+            console.warn(
+              `[SupabaseGuard] Rate limit exceeded in "${context}" (attempt ${attempt + 1}/${MAX_RETRIES + 1}). ` +
+                `Retrying in ${Math.round(delay)}ms.`,
+            );
+            await sleep(delay);
+            continue;
+          }
+
+          // Last attempt exhausted – log and rethrow
           console.warn(
-            `[SupabaseGuard] Rate limit exceeded in "${context}" (attempt ${attempt + 1}/${MAX_RETRIES + 1}). ` +
-              `Retrying in ${Math.round(delay)}ms.`,
+            `[SupabaseGuard] Rate limit exceeded in "${context}" – all ${MAX_RETRIES + 1} attempts exhausted.`,
           );
-          await sleep(delay);
-          continue;
+          throw err;
         }
 
-        // Last attempt exhausted – log and rethrow
-        console.warn(
-          `[SupabaseGuard] Rate limit exceeded in "${context}" – all ${MAX_RETRIES + 1} attempts exhausted.`,
-        );
-        throw err;
-      }
+        // 5. Handle network errors with a fixed 1s retry
+        if (isNetworkError(err)) {
+          if (attempt < MAX_RETRIES) {
+            console.warn(
+              `[SupabaseGuard] Network error in "${context}" (attempt ${attempt + 1}/${MAX_RETRIES + 1}). ` +
+                `Retrying in ${NETWORK_RETRY_DELAY_MS}ms.`,
+            );
+            await sleep(NETWORK_RETRY_DELAY_MS);
+            continue;
+          }
 
-      // 5. Handle network errors with a fixed 1s retry
-      if (isNetworkError(err)) {
-        if (attempt < MAX_RETRIES) {
           console.warn(
-            `[SupabaseGuard] Network error in "${context}" (attempt ${attempt + 1}/${MAX_RETRIES + 1}). ` +
-              `Retrying in ${NETWORK_RETRY_DELAY_MS}ms.`,
+            `[SupabaseGuard] Network error in "${context}" – all ${MAX_RETRIES + 1} attempts exhausted.`,
           );
-          await sleep(NETWORK_RETRY_DELAY_MS);
-          continue;
+          throw err;
         }
 
-        console.warn(
-          `[SupabaseGuard] Network error in "${context}" – all ${MAX_RETRIES + 1} attempts exhausted.`,
-        );
+        // 6. Non-retryable error – rethrow immediately
         throw err;
       }
-
-      // 6. Non-retryable error – rethrow immediately
-      throw err;
     }
-  }
 
-  // Should never reach here, but TypeScript needs it
-  throw lastError;
+    // Should never reach here, but TypeScript needs it
+    throw lastError;
+  });
 }

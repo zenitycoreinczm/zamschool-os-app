@@ -47,9 +47,12 @@ const nextConfig: NextConfig = {
   },
   output: 'standalone',
   outputFileTracingRoot: process.cwd(),
-   typescript: {
+  typescript: {
     ignoreBuildErrors: false,
   },
+  // Optimize for Vercel usage limits
+  poweredByHeader: false,
+  compress: true,
   // Allow access to remote image placeholder.
   images: {
     remotePatterns: [
