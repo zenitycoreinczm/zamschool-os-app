@@ -6,8 +6,12 @@ const supabaseUrl =
 const supabaseAnonKey =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
 
+const isBuildTime = typeof window === "undefined" && process.env.NEXT_PHASE === "phase-production-build";
+
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error("Missing Supabase env. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+  if (!isBuildTime) {
+    throw new Error("Missing Supabase env. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+  }
 }
 
 const isBrowser = typeof window !== "undefined";
@@ -16,7 +20,7 @@ type SupabaseBrowserClient = ReturnType<typeof createSupabaseClient>;
 
 function getServerServiceRoleKey() {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-  if (!serviceRoleKey) {
+  if (!serviceRoleKey && !isBuildTime) {
     throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY for server admin client.");
   }
   return serviceRoleKey;
@@ -28,22 +32,26 @@ export const supabase: SupabaseBrowserClient = isBrowser
       supabaseUrl,
       supabaseAnonKey,
     })
-  : createSupabaseClient();
+  : supabaseUrl && supabaseAnonKey
+    ? createSupabaseClient()
+    : (null as unknown as SupabaseBrowserClient);
 
 // Admin client for server-side operations that bypass RLS.
 // In the browser we must not create a second auth client with the same storage key.
 export const supabaseAdmin = isBrowser
   ? supabase
-  : createClient(
-      supabaseUrl,
-      getServerServiceRoleKey(),
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
+  : supabaseUrl && getServerServiceRoleKey()
+    ? createClient(
+        supabaseUrl,
+        getServerServiceRoleKey(),
+        {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false,
+          },
+        }
+      )
+    : (null as unknown as ReturnType<typeof createClient>);
 
 export type UserRole = "ADMIN" | "TEACHER" | "STUDENT" | "PARENT";
 

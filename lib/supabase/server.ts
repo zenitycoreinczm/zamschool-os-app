@@ -10,8 +10,11 @@ let hasValidatedEnv = false;
 
 function validateEnv() {
   if (hasValidatedEnv) return;
+  const isBuildTime = process.env.NEXT_PHASE === "phase-production-build";
   if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error("Missing Supabase env. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+    if (!isBuildTime) {
+      throw new Error("Missing Supabase env. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+    }
   }
   hasValidatedEnv = true;
 }
@@ -19,6 +22,14 @@ function validateEnv() {
 export async function createClient() {
   validateEnv();
   const cookieStore = await cookies();
+
+  const isBuildTime = process.env.NEXT_PHASE === "phase-production-build";
+  if (!supabaseUrl || !supabaseAnonKey) {
+    if (isBuildTime) {
+      return null as unknown as ReturnType<typeof createServerClient>;
+    }
+    throw new Error("Missing Supabase env. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+  }
 
   return createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
