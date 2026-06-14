@@ -23,7 +23,7 @@ import {
 import * as z from "zod";
 import { getAuthRateLimitState } from "@/lib/auth-rate-limit";
 import { resolveOnboardingPath } from "@/lib/auth-routing";
-import { buildLoginCooldown, getLoginCooldownState } from "@/lib/login-cooldown";
+import { buildLoginCooldown, getLoginCooldownState, clearLoginCooldown } from "@/lib/login-cooldown";
 import { fetchProfileByIdentity } from "@/lib/profile-lookup";
 import { supabase } from "@/lib/supabase";
 import { AuthPageShell } from "@/components/auth/AuthPageShell";
@@ -268,6 +268,9 @@ function LoginContent() {
       });
 
       if (authError) throw authError;
+
+      // Clear any rate limit cooldown on successful login
+      clearLoginCooldown();
 
       const emailVerified = Boolean(authData.user.email_confirmed_at);
       if (process.env.NODE_ENV === "development") {
