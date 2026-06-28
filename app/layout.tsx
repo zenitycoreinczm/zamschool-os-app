@@ -35,7 +35,17 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className} suppressHydrationWarning>
+      <body
+        className={inter.className}
+        // `next/font/google` injects a hashed className that can differ
+        // between SSR + first client render in dev mode (font fallback
+        // resolution). Production builds are stable, but the suppression
+        // is kept to silence dev-only noise. Tracked in docs/AUDIT.md
+        // "Test coverage limits and future work" as a future investigation.
+        // No other hydration mismatches should escape it — if any do,
+        // they will appear in the dev console.
+        suppressHydrationWarning
+      >
         <SupabaseGuardBootstrap />
         <ClientEnvValidator />
         {children}

@@ -1,4 +1,4 @@
-export type HeroAccent = "sky" | "teal" | "indigo" | "amber" | "emerald" | "violet" | "rose" | "slate";
+export type HeroAccent = "sky" | "teal" | "indigo" | "amber" | "emerald" | "violet" | "rose" | "slate" | "green";
 
 export const heroAccentStyles: Record<
   HeroAccent,
@@ -66,6 +66,13 @@ export const heroAccentStyles: Record<
     glowB: "bg-slate-400/10",
     statBorder: "border-white/10",
   },
+  green: {
+    shell: "from-slate-950 via-green-950 to-emerald-950",
+    eyebrow: "text-green-300",
+    glowA: "bg-green-500/25",
+    glowB: "bg-emerald-400/15",
+    statBorder: "border-white/10",
+  },
 };
 
 export const pageHeaderAccentStyles: Record<
@@ -120,6 +127,12 @@ export const pageHeaderAccentStyles: Record<
     surface: "from-white via-white to-slate-50",
     icon: "bg-slate-100 text-slate-600 ring-slate-200",
   },
+  green: {
+    bar: "from-green-500 to-emerald-400",
+    eyebrow: "text-green-600",
+    surface: "from-white via-white to-green-50/80",
+    icon: "bg-green-50 text-green-600 ring-green-100",
+  },
 };
 
 export function moduleToneClass(tone: string) {
@@ -138,6 +151,8 @@ export function moduleToneClass(tone: string) {
       return "bg-teal-50 text-teal-600 ring-teal-100 group-hover:bg-teal-100";
     case "slate":
       return "bg-slate-100 text-slate-600 ring-slate-200 group-hover:bg-slate-200";
+    case "green":
+      return "bg-green-50 text-green-600 ring-green-100 group-hover:bg-green-100";
     default:
       return "bg-sky-50 text-sky-600 ring-sky-100 group-hover:bg-sky-100";
   }

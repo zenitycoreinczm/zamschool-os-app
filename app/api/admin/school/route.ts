@@ -13,6 +13,8 @@ import {
   requireAdminContext,
   requireAdminSetupContext,
 } from "@/lib/server-auth";
+import { requireFeatureAccess } from "@/lib/feature-permissions";
+import { auditDomainWrite } from "@/lib/audit-domain";
 
 const updateSchoolSchema = z.object({
   name: z.string().min(2),
@@ -103,6 +105,12 @@ export async function PUT(req: Request) {
   try {
     const access = await requireAdminContext(req);
     if (!access.ok) return access.response;
+    const perm = await requireFeatureAccess(
+      access.context,
+      "settings",
+      "update",
+    );
+    if (!perm.ok) return perm.response;
     const { schoolId } = access.context;
     const rate = await applyRateLimit({
       key: `admin-school:${getClientIp(req)}`,
@@ -149,6 +157,16 @@ export async function PUT(req: Request) {
       .single();
 
     if (error) throw error;
+
+    await auditDomainWrite({
+      schoolId,
+      userId: access.context.userId,
+      action: "school.update",
+      entityType: "school",
+      entityId: schoolId,
+      newData: payload,
+      ipAddress: getClientIp(req),
+    });
 
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {

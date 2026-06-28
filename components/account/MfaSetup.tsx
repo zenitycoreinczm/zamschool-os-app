@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { Loader2, ShieldCheck, ShieldOff, Trash2, QrCode, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { safeErrorMessage } from "@/lib/safe-error";
@@ -202,9 +203,12 @@ export function MfaSetup() {
                           dangerouslySetInnerHTML={{ __html: enrollData.qrCodeUrl }}
                         />
                       ) : (
-                        <img
+                        <Image
                           src={enrollData.qrCodeUrl}
                           alt="QR code"
+                          width={192}
+                          height={192}
+                          unoptimized
                           className="h-48 w-48"
                         />
                       )}

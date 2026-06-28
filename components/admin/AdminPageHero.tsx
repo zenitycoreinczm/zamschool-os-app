@@ -65,8 +65,8 @@ export function AdminPageHero({
         aria-hidden
       />
 
-      <div className="relative flex flex-col gap-5 p-5 md:p-6 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0 flex-1 space-y-2.5">
+      <div className="relative flex flex-col gap-4 p-4 md:p-5 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0 flex-1 space-y-2">
           <p className={cn("ws-eyebrow", palette.eyebrow)}>{eyebrow}</p>
           <h1 className="text-2xl font-bold tracking-tight md:text-[1.65rem] lg:text-[1.75rem]">
             {title}
@@ -79,7 +79,7 @@ export function AdminPageHero({
       </div>
 
       {stats && stats.length > 0 ? (
-        <div className="relative grid grid-cols-2 gap-2 border-t border-white/10 bg-black/15 p-3 backdrop-blur-md md:grid-cols-4 md:gap-3 md:p-4">
+        <div className="relative grid grid-cols-2 gap-2 border-t border-white/10 bg-black/15 p-3 backdrop-blur-md md:grid-cols-4">
           {stats.map((stat) => {
             const Icon = stat.icon;
             const tone = toneStyles[stat.tone || "sky"];
@@ -87,21 +87,25 @@ export function AdminPageHero({
               <div
                 key={stat.label}
                 className={cn(
-                  "rounded-workspace-lg border px-3 py-3 backdrop-blur-sm transition-colors duration-[var(--duration-workspace-fast)] hover:bg-white/[0.08]",
+                  "rounded-workspace-lg border px-3 py-2.5 backdrop-blur-sm transition-colors duration-[var(--duration-workspace-fast)] hover:bg-white/[0.08]",
                   palette.statBorder,
                   "bg-white/[0.04]"
                 )}
               >
-                <div
-                  className={cn(
-                    "mb-2 inline-flex h-8 w-8 items-center justify-center rounded-workspace-md ring-1",
-                    tone
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
+                <div className="flex items-center gap-2">
+                  <span
+                    className={cn(
+                      "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-workspace-md ring-1",
+                      tone
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0">
+                    <p className="ws-tabular text-lg font-bold leading-none">{stat.value}</p>
+                    <p className="truncate text-xs font-medium text-slate-200">{stat.label}</p>
+                  </span>
                 </div>
-                <p className="ws-tabular text-xl font-bold">{stat.value}</p>
-                <p className="text-xs font-medium text-slate-200">{stat.label}</p>
                 {stat.hint ? <p className="mt-0.5 text-[11px] text-slate-400">{stat.hint}</p> : null}
               </div>
             );

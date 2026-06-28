@@ -9,7 +9,7 @@ const BLOCKED_TARGET_ROLES = new Set(["principal", "super_admin"]);
  */
 export function canActorCreateSchoolRole(
   actorRole: string | null | undefined,
-  targetRole: string | null | undefined
+  targetRole: string | null | undefined,
 ): boolean {
   const actor = normalizeRole(actorRole);
   const target = roleToStoredValue(targetRole);
@@ -21,14 +21,39 @@ export function canActorCreateSchoolRole(
     return true;
   }
 
+  if (actor === "ICT_ADMIN") {
+    // ICT Admin manages system accounts only — not academic or finance roles.
+    const ictAllowedTargets = new Set([
+      "teacher",
+      "student",
+      "parent",
+      "payments",
+      "admin",
+      "deputy_head",
+      "guidance_office",
+      "academic_admin",
+      "hr_admin",
+      "ict_admin",
+      "discipline_admin",
+      "registrar",
+    ]);
+    return ictAllowedTargets.has(target);
+  }
+
   if (actor === "HR_ADMIN") {
     return target !== "student" && target !== "parent";
+  }
+
+  if (actor === "REGISTRAR") {
+    return target === "student" || target === "parent" || target === "teacher";
   }
 
   return false;
 }
 
-export function blockedRoleCreationMessage(targetRole: string | null | undefined): string {
+export function blockedRoleCreationMessage(
+  targetRole: string | null | undefined,
+): string {
   const target = roleToStoredValue(targetRole);
   if (target === "principal") {
     return "Head Teacher accounts are created only when the school is registered.";

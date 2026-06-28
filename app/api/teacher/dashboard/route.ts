@@ -17,6 +17,7 @@ import {
 import { safeErrorMessage } from "@/lib/server-guards";
 import { supabaseAdmin } from "@/lib/supabase";
 import { fetchProfileByIdentity } from "@/lib/profile-lookup";
+import { withCache, CACHE_CONFIGS } from "@/lib/enhanced-cache";
 
 export async function GET(req: Request) {
   try {
@@ -31,6 +32,7 @@ export async function GET(req: Request) {
 
     const rate = await applyPlatformRateLimit({
       scope: "teacher-dashboard",
+      schoolId: access.context.schoolId,
       req,
       userId: access.context.userId,
       preset: "teacherDashboard",
@@ -52,47 +54,49 @@ export async function GET(req: Request) {
     const profileId =
       profile.id || access.context.profileId || access.context.userId;
 
-    const assignmentScope = await loadTeacherAssignmentScope({
-      schoolId: access.context.schoolId,
-      actorProfileId: profileId,
-    });
+    const schoolId = access.context.schoolId;
 
-    const assignments = await loadAssignmentsInScope(
-      access.context.schoolId,
-      assignmentScope,
-    );
+    const dashboardData = await withCache(
+      `teacher:${access.context.userId}:${schoolId}`,
+      async () => {
+        const assignmentScope = await loadTeacherAssignmentScope({
+          schoolId,
+          actorProfileId: profileId,
+        });
 
-    const [teacher, unreadSummary, results, events] = await Promise.all([
-      loadTeacherAccountDetail({
-        schoolId: access.context.schoolId,
-        profileId,
-        baseProfile: {
-          profileId: profile.id,
-          role: "teacher",
-          displayName: buildDisplayName(profile),
-          email: profile.email || null,
-          avatarUrl: toProtectedAvatarUrl(profile.avatar_url, {
-            schoolId: access.context.schoolId,
-            userId: profile.id,
+        const assignments = await loadAssignmentsInScope(
+          schoolId,
+          assignmentScope,
+        );
+
+        const [teacher, unreadSummary, results, events] = await Promise.all([
+          loadTeacherAccountDetail({
+            schoolId,
+            profileId,
+            baseProfile: {
+              profileId: profile.id,
+              role: "teacher",
+              displayName: buildDisplayName(profile),
+              email: profile.email || null,
+              avatarUrl: toProtectedAvatarUrl(profile.avatar_url, {
+                schoolId,
+                userId: profile.id,
+              }),
+              status: profile.is_active === false ? "INACTIVE" : "ACTIVE",
+              updatedAt: profile.updated_at || profile.created_at || null,
+            },
           }),
-          status: profile.is_active === false ? "INACTIVE" : "ACTIVE",
-          updatedAt: profile.updated_at || profile.created_at || null,
-        },
-      }),
-      loadUnreadSummary(access.context.userId, access.context.schoolId),
-      loadResultsInScope(access.context.schoolId, assignmentScope, assignments),
-      loadUpcomingEvents(access.context.schoolId, access.context.role),
-    ]);
+          loadUnreadSummary(access.context.userId, schoolId),
+          loadResultsInScope(schoolId, assignmentScope, assignments),
+          loadUpcomingEvents(schoolId, access.context.role),
+        ]);
 
-    const pendingGrades = results.filter(
-      (row: any) => row.created_at && row.score == null && !row.grade,
-    ).length;
-    const draftResults = results.filter((row: any) => !row.published_at).length;
+        const pendingGrades = results.filter(
+          (row: any) => row.created_at && row.score == null && !row.grade,
+        ).length;
+        const draftResults = results.filter((row: any) => !row.published_at).length;
 
-    return jsonWithPrivateCache(
-      {
-        success: true,
-        data: {
+        return {
           profile: {
             first_name: profile.first_name || "",
             last_name: profile.last_name || "",
@@ -118,7 +122,18 @@ export async function GET(req: Request) {
           events: {
             total: events.length,
           },
-        },
+        };
+      },
+      {
+        ...CACHE_CONFIGS.teacher.dashboard,
+        tags: ["dashboard"],
+      }
+    );
+
+    return jsonWithPrivateCache(
+      {
+        success: true,
+        data: dashboardData,
       },
       "dashboardRead",
     );

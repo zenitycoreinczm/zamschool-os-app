@@ -264,7 +264,7 @@ export default function AdminTimetablePage() {
         ))}
       </section>
 
-      <section className="hidden rounded-[28px] border border-slate-200 bg-white shadow-sm lg:block">
+      <section className="hidden rounded-workspace-xl border border-slate-200 bg-white shadow-sm lg:block">
         <div className="border-b border-slate-200 px-6 py-4"><h2 className="text-lg font-semibold text-slate-900">Weekly board</h2><p className="text-sm text-slate-500">Lessons are arranged in 30-minute slots.</p></div>
         <div className="overflow-x-auto">
           <div className="min-w-[1080px] grid" style={{ gridTemplateColumns: "112px repeat(5, minmax(0, 1fr))" }}>
@@ -349,7 +349,49 @@ function LessonCard({ lesson, compact = false, menuOpen, onToggleMenu, onView, o
 }
 
 function ActionMenu({ open, onToggle, onView, onDelete }: { open: boolean; onToggle: () => void; onView: () => void; onDelete: () => void; }) {
-  return <div className="relative isolate overflow-visible"><button type="button" onClick={onToggle} className="grid h-9 w-9 place-items-center rounded-xl bg-white/80 text-slate-600 ring-1 ring-slate-200" aria-haspopup="menu" aria-expanded={open}><MoreHorizontal className="h-4 w-4" /></button>{open ? <div className="zamschool-workspace-popover absolute right-0 mt-2 w-40 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl">{getLessonActionItems({ id: "x" }).map((action) => action.key === "view" ? <button key={action.key} type="button" onClick={onView} className="flex w-full rounded-xl px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">{action.label}</button> : <button key={action.key} type="button" onClick={onDelete} className="flex w-full rounded-xl px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50">{action.label}</button>)}</div> : null}</div>;
+  return (
+    <div className="relative isolate overflow-visible">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="grid h-9 w-9 place-items-center rounded-xl bg-white/80 text-slate-600 ring-1 ring-slate-200 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200"
+      >
+        <MoreHorizontal className="h-4 w-4" />
+      </button>
+      {open ? (
+        <div
+          className="zamschool-workspace-popover absolute right-0 mt-2 w-40 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl"
+          role="menu"
+        >
+          {getLessonActionItems({ id: "x" }).map((action) =>
+            action.key === "view" ? (
+              <button
+                key={action.key}
+                type="button"
+                role="menuitem"
+                onClick={onView}
+                className="flex w-full rounded-xl px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200"
+              >
+                {action.label}
+              </button>
+            ) : (
+              <button
+                key={action.key}
+                type="button"
+                role="menuitem"
+                onClick={onDelete}
+                className="flex w-full rounded-xl px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
+              >
+                {action.label}
+              </button>
+            )
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function Modal({ title, subtitle, onClose, children }: { title: string; subtitle: string; onClose: () => void; children: React.ReactNode; }) {

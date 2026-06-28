@@ -192,7 +192,10 @@ const accountSchema = z.object({
   phone: z
     .string()
     .min(10, "Phone number must be at least 10 digits")
-    .regex(/^(\+?260|0)?[97]\d{8}$/, "Enter a valid Zambian phone number (e.g. +260 97 123 4567)"),
+    .regex(
+      /^(\+?260|0)?[97]\d{8}$/,
+      "Enter a valid Zambian phone number (e.g. +260 97 123 4567)",
+    ),
   password: z
     .string()
     .min(8, "Password must be at least 8 characters")
@@ -206,7 +209,10 @@ const schoolSchema = z.object({
     .string()
     .min(4, "School code must be at least 4 characters")
     .max(12, "School code must be at most 12 characters")
-    .regex(/^[A-Za-z0-9]+$/, "School code must contain only letters and numbers"),
+    .regex(
+      /^[A-Za-z0-9]+$/,
+      "School code must contain only letters and numbers",
+    ),
   address: z.string().min(1, "Address is required"),
   emisCode: z.string().min(1, "EMIS code is required"),
   province: z.string().min(1, "Province is required"),
@@ -219,12 +225,14 @@ type CodeFormValues = z.infer<typeof codeSchema>;
 type AccountFormValues = z.infer<typeof accountSchema>;
 type SchoolFormValues = z.infer<typeof schoolSchema>;
 
+type PersistedAccountData = Omit<AccountFormValues, "password">;
+
 const REGISTER_DRAFT_KEY = "zamschool_register_draft";
 
 type RegisterDraft = {
   verifiedCode: string;
   codeScope: VerifiedCodeScope | null;
-  accountData: AccountFormValues;
+  accountData: PersistedAccountData;
   createdUserId: string;
 };
 
@@ -445,7 +453,7 @@ function RegisterContent() {
   // Data carried across steps
   const [verifiedCode, setVerifiedCode] = useState("");
   const [codeScope, setCodeScope] = useState<VerifiedCodeScope | null>(null);
-  const [accountData, setAccountData] = useState<AccountFormValues | null>(
+  const [accountData, setAccountData] = useState<PersistedAccountData | null>(
     null,
   );
   const [createdUserId, setCreatedUserId] = useState<string | null>(null);
@@ -474,6 +482,39 @@ function RegisterContent() {
 
   useEffect(() => {
     if (searchParams.get("resume") !== "school") return;
+
+    // Hydrate from URL params first — used when the login page redirects a
+    // half-finished principal back here (user already exists but profile row
+    // never landed). sessionStorage may or may not exist for these users.
+    const queryEmail = searchParams.get("email");
+    const queryUserId = searchParams.get("userId");
+    if (queryEmail && queryUserId) {
+      void (async () => {
+        const { data } = await supabase.auth.getUser();
+        const meta = (data?.user?.user_metadata ?? {}) as {
+          head_teacher_name?: string;
+          admin_name?: string;
+          first_name?: string;
+          last_name?: string;
+        };
+        const headTeacherName =
+          meta.head_teacher_name ||
+          meta.admin_name ||
+          [meta.first_name, meta.last_name].filter(Boolean).join(" ").trim() ||
+          "";
+        setAccountData({
+          headTeacherName,
+          email: queryEmail,
+          phone: (data?.user?.phone ?? "") as string,
+        });
+        setCreatedUserId(queryUserId);
+        setError(
+          "Your account is verified but the school was not created yet. Enter your access code to finish school setup.",
+        );
+        setStep(1);
+      })();
+      return;
+    }
 
     try {
       const raw = sessionStorage.getItem(REGISTER_DRAFT_KEY);
@@ -563,13 +604,21 @@ function RegisterContent() {
       if (authError) throw authError;
       if (!authData.user) throw new Error("Failed to create account");
 
-      setAccountData(data);
+      setAccountData({
+        headTeacherName: data.headTeacherName,
+        email: data.email,
+        phone: data.phone,
+      });
       setCreatedUserId(authData.user.id);
 
       const draft: RegisterDraft = {
         verifiedCode,
         codeScope,
-        accountData: data,
+        accountData: {
+          headTeacherName: data.headTeacherName,
+          email: data.email,
+          phone: data.phone,
+        },
         createdUserId: authData.user.id,
       };
       sessionStorage.setItem(REGISTER_DRAFT_KEY, JSON.stringify(draft));
@@ -606,18 +655,10 @@ function RegisterContent() {
     setLoading(true);
     setError(null);
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (!sessionData.session) {
-        throw new Error(
-          "Your session expired. Please sign in again to complete registration.",
-        );
-      }
-
       const res = await fetch("/api/auth/register-school", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${sessionData.session.access_token}`,
         },
         credentials: "same-origin",
         body: JSON.stringify({
@@ -640,12 +681,15 @@ function RegisterContent() {
       if (!res.ok) throw new Error(result.error || "Registration failed");
 
       sessionStorage.removeItem(REGISTER_DRAFT_KEY);
+      await supabase.auth.refreshSession();
       router.replace("/app/principal");
       router.refresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Registration failed";
       if (msg.includes("session expired") || msg.includes("Session expired")) {
-        setError("Your session expired. Please sign in again to complete registration.");
+        setError(
+          "Your session expired. Please sign in again to complete registration.",
+        );
       } else {
         setError(msg);
       }
@@ -709,10 +753,12 @@ function RegisterContent() {
         </div>
 
         {/* Main Card */}
-        <div className={cn(
-          "rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 shadow-[0_8px_30px_rgba(15,23,42,0.06)] transition-all duration-200",
-          stepTransition ? "opacity-0 scale-[0.98]" : "opacity-100 scale-100"
-        )}>
+        <div
+          className={cn(
+            "rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 shadow-[0_8px_30px_rgba(15,23,42,0.06)] transition-all duration-200",
+            stepTransition ? "opacity-0 scale-[0.98]" : "opacity-100 scale-100",
+          )}
+        >
           {/* Error Banner */}
           {error && (
             <div className="mb-6 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -952,7 +998,8 @@ function RegisterContent() {
                       />
                     </div>
                     <p className="mt-1 text-xs text-slate-400">
-                      Zambian number for system notifications and account recovery.
+                      Zambian number for system notifications and account
+                      recovery.
                     </p>
                     {accountForm.formState.errors.phone && (
                       <p className="mt-1.5 flex items-center gap-1 text-xs text-red-500">
@@ -1322,7 +1369,8 @@ function RegisterContent() {
                 >
                   {loading ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" /> Registering school...
+                      <Loader2 className="w-4 h-4 animate-spin" /> Registering
+                      school...
                     </>
                   ) : (
                     <>

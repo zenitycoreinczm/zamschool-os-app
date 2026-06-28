@@ -20,7 +20,7 @@ export function MessageFirstVisitHint({
     try {
       if (localStorage.getItem(storageKey) !== "1") setVisible(true); // eslint-disable-line react-hooks/set-state-in-effect
     } catch {
-      setVisible(true); // eslint-disable-line react-hooks/set-state-in-effect
+      setVisible(true);
     }
   }, [storageKey]);
 

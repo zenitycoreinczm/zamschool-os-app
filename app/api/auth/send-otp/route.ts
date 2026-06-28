@@ -10,13 +10,13 @@ import {
   applyAuthApiRateLimit,
   authApiRateLimitResponse,
 } from "@/lib/auth-api-rate-limit";
-import { checkOtpSendThrottle } from "@/lib/redis-temp";
+import { checkOtpSendThrottle } from "@/lib/redis/temp";
 import {
   assertOtpRequestMatchesUser,
   OtpAuthError,
 } from "@/lib/otp-request-auth";
 import { emailService } from "@/lib/email";
-import { REDIS_TTL } from "@/lib/redis-ttl";
+import { REDIS_TTL } from "@/lib/redis/ttl";
 import { storeOtpToken } from "@/lib/temp-token-store";
 import crypto from "crypto";
 

@@ -7,20 +7,46 @@ import { Loader2, Megaphone } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { isAbortLikeError } from "@/lib/async-guards";
 import { fetchAnnouncementsList } from "@/lib/announcements-client";
+import { useWorkspaceContext } from "@/components/WorkspaceContextProvider";
 
-function resolveAnnouncementsEndpoint(pathname: string) {
-  if (pathname.startsWith("/teacher")) {
+function resolveAnnouncementsEndpoint(params: {
+  pathname: string;
+  role: string | null | undefined;
+}) {
+  const { pathname, role } = params;
+  if (role === "teacher" || pathname.startsWith("/app/teacher")) {
     return "/api/teacher/announcements?limit=3";
   }
-  if (pathname.startsWith("/student") || pathname.startsWith("/parent")) {
-    return "/api/account/announcements?limit=3";
+  if (role === "admin" || role === "principal" || role === "super_admin") {
+    return "/api/admin/announcements?limit=3";
   }
-  return "/api/admin/announcements?limit=3";
+  return "/api/account/announcements?limit=3";
+}
+
+function resolveAnnouncementsHref(params: {
+  pathname: string;
+  role: string | null | undefined;
+}) {
+  const { pathname, role } = params;
+  if (role === "teacher" || pathname.startsWith("/app/teacher")) {
+    return "/app/teacher/announcements";
+  }
+  if (role === "student" || pathname.startsWith("/app/student")) {
+    return "/app/student/announcements";
+  }
+  if (role === "parent" || pathname.startsWith("/app/parent")) {
+    return "/app/parent/announcements";
+  }
+  return "/app/announcements";
 }
 
 export default function Announcements() {
   const pathname = usePathname();
-  const endpoint = useMemo(() => resolveAnnouncementsEndpoint(pathname), [pathname]);
+  const { role } = useWorkspaceContext();
+  const endpoint = useMemo(
+    () => resolveAnnouncementsEndpoint({ pathname, role }),
+    [pathname, role],
+  );
   const [announcements, setAnnouncements] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -50,22 +76,24 @@ export default function Announcements() {
     };
   }, [endpoint]);
 
-  const viewAllHref = pathname.startsWith("/teacher")
-    ? "/teacher/announcements"
-    : pathname.startsWith("/student")
-      ? "/student/announcements"
-      : pathname.startsWith("/parent")
-        ? "/parent/announcements"
-        : "/app/announcements";
+  const viewAllHref = useMemo(
+    () => resolveAnnouncementsHref({ pathname, role }),
+    [pathname, role],
+  );
 
   return (
-    <div className="bg-white p-6 rounded-[22px] shadow-sm border border-slate-100">
+    <div className="bg-white p-6 rounded-workspace-xl shadow-sm border border-slate-100">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
           <Megaphone className="w-5 h-5 text-lamaPurple" />
-          <h1 className="text-[2rem] font-bold text-slate-900">Announcements</h1>
+          <h2 className="text-lg font-semibold text-slate-900">
+            Announcements
+          </h2>
         </div>
-        <Link href={viewAllHref} className="text-xs font-bold text-slate-400 transition hover:text-slate-600 hover:underline">
+        <Link
+          href={viewAllHref}
+          className="text-xs font-bold text-slate-400 transition hover:text-slate-600 hover:underline"
+        >
           View All
         </Link>
       </div>
@@ -97,7 +125,9 @@ export default function Announcements() {
                   {formatDate(ann.published_at || ann.created_at)}
                 </span>
               </div>
-              <p className="mt-2 text-sm text-slate-600 line-clamp-2">{ann.body || ann.content}</p>
+              <p className="mt-2 text-sm text-slate-600 line-clamp-2">
+                {ann.body || ann.content}
+              </p>
             </div>
           ))
         )}

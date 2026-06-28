@@ -1,8 +1,15 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { z } from "zod";
-import { applyRateLimit, getClientIp, parseJsonWithSchema, safeErrorMessage } from "@/lib/server-guards";
+import {
+  applyRateLimit,
+  getClientIp,
+  parseJsonWithSchema,
+  safeErrorMessage,
+} from "@/lib/server-guards";
 import { requireAdminContext } from "@/lib/server-auth";
+import { auditDomainWrite } from "@/lib/audit-domain";
+import { enforceRouteAccess } from "@/lib/route-enforcement";
 
 const createGradingScaleSchema = z.object({
   name: z.string().min(1).optional(),
@@ -35,15 +42,27 @@ export async function GET(req: Request) {
 
     if (error) throw error;
 
-    return NextResponse.json({ success: true, data: (data || []).map(normalizeGradingScaleRow) });
+    return NextResponse.json({
+      success: true,
+      data: (data || []).map(normalizeGradingScaleRow),
+    });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to fetch grading scales") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to fetch grading scales") },
+      { status: 500 },
+    );
   }
 }
 
 export async function POST(req: Request) {
   try {
-    const access = await requireAdminContext(req);
+    const access = await enforceRouteAccess(req, {
+      allowedRoles: ["ACADEMIC_ADMIN", "ADMIN", "SUPER_ADMIN"],
+      feature: "grading_scales",
+      featureAction: "create",
+      domain: "academic",
+      domainAction: "create",
+    });
     if (!access.ok) return access.response;
     const { schoolId } = access.context;
     const ip = getClientIp(req);
@@ -55,7 +74,7 @@ export async function POST(req: Request) {
     if (!rate.allowed) {
       return NextResponse.json(
         { error: "Too many requests. Please try again shortly." },
-        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } }
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
       );
     }
 
@@ -77,15 +96,38 @@ export async function POST(req: Request) {
 
     if (error) throw error;
 
-    return NextResponse.json({ success: true, data: normalizeGradingScaleRow(data) });
+    const normalized = normalizeGradingScaleRow(data);
+    await auditDomainWrite({
+      schoolId,
+      userId: access.context.userId,
+      action: "grading_scales.create",
+      entityType: "grading_scale",
+      entityId: data.id,
+      newData: normalized,
+      ipAddress: getClientIp(req),
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: normalized,
+    });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to create grading scale") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to create grading scale") },
+      { status: 500 },
+    );
   }
 }
 
 export async function PUT(req: Request) {
   try {
-    const access = await requireAdminContext(req);
+    const access = await enforceRouteAccess(req, {
+      allowedRoles: ["ACADEMIC_ADMIN", "ADMIN", "SUPER_ADMIN"],
+      feature: "grading_scales",
+      featureAction: "update",
+      domain: "academic",
+      domainAction: "update",
+    });
     if (!access.ok) return access.response;
     const { schoolId } = access.context;
     const ip = getClientIp(req);
@@ -97,7 +139,7 @@ export async function PUT(req: Request) {
     if (!rate.allowed) {
       return NextResponse.json(
         { error: "Too many requests. Please try again shortly." },
-        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } }
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
       );
     }
 
@@ -121,22 +163,48 @@ export async function PUT(req: Request) {
 
     if (error) throw error;
 
-    return NextResponse.json({ success: true, data: normalizeGradingScaleRow(data) });
+    const normalized = normalizeGradingScaleRow(data);
+    await auditDomainWrite({
+      schoolId,
+      userId: access.context.userId,
+      action: "grading_scales.update",
+      entityType: "grading_scale",
+      entityId: body.id,
+      newData: normalized,
+      ipAddress: getClientIp(req),
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: normalized,
+    });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to update grading scale") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to update grading scale") },
+      { status: 500 },
+    );
   }
 }
 
 export async function DELETE(req: Request) {
   try {
-    const access = await requireAdminContext(req);
+    const access = await enforceRouteAccess(req, {
+      allowedRoles: ["ACADEMIC_ADMIN", "ADMIN", "SUPER_ADMIN"],
+      feature: "grading_scales",
+      featureAction: "delete",
+      domain: "academic",
+      domainAction: "delete",
+    });
     if (!access.ok) return access.response;
     const { schoolId } = access.context;
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 
     if (!id) {
-      return NextResponse.json({ error: "Grading scale ID is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Grading scale ID is required" },
+        { status: 400 },
+      );
     }
 
     const { error } = await supabaseAdmin
@@ -147,9 +215,21 @@ export async function DELETE(req: Request) {
 
     if (error) throw error;
 
+    await auditDomainWrite({
+      schoolId,
+      userId: access.context.userId,
+      action: "grading_scales.delete",
+      entityType: "grading_scale",
+      entityId: id,
+      ipAddress: getClientIp(req),
+    });
+
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to delete grading scale") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to delete grading scale") },
+      { status: 500 },
+    );
   }
 }
 

@@ -12,9 +12,9 @@ import { fetchProfileByIdentity } from "@/lib/profile-lookup";
 import type { ActorContext } from "@/lib/server-auth-core";
 import { toProtectedAvatarUrl } from "@/lib/avatar-url";
 import { supabaseAdmin } from "@/lib/supabase";
-import { isRedisConfigured, redisGetJson, redisSetJson } from "@/lib/redis";
-import { workspaceCacheKey } from "@/lib/redis-keys";
-import { REDIS_TTL } from "@/lib/redis-ttl";
+import { isRedisConfigured, redisGetJson, redisSetJson } from "@/lib/redis/client";
+import { workspaceCacheKey } from "@/lib/redis/keys";
+import { REDIS_TTL } from "@/lib/redis/ttl";
 
 export type WorkspaceContextPayload = {
   userId: string;

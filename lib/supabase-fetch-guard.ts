@@ -37,8 +37,10 @@ const perDeviceTimestamps = new Map<string, number[]>();
  */
 function getDeviceId(): string {
   if (typeof window === "undefined") {
-    // Server-side: use a unique identifier per request context
-    return `server-${process.pid}-${Date.now()}`;
+    // Server-side: one stable bucket per process so the budget actually
+    // tracks the rate. A per-call id (pid+Date.now()) resets the window
+    // every request and silently disables the guard.
+    return `server-${process.pid}`;
   }
 
   try {
@@ -85,30 +87,28 @@ function recordLocalBudget(deviceId: string): void {
 }
 
 /**
- * Synchronously wait until this device's budget allows another request.
+ * Asynchronously wait until this device's budget allows another request.
+ * Uses setTimeout-based polling so the event loop is not blocked.
  */
-function waitForBudget(deviceId: string): void {
-  const maxSpinMs = 5_000;
+async function waitForBudget(deviceId: string): Promise<void> {
+  const maxWaitMs = 5_000;
   const started = Date.now();
 
   while (currentRate(deviceId) >= MAX_REQUESTS_PER_SECOND_PER_USER) {
-    if (Date.now() - started > maxSpinMs) {
+    if (Date.now() - started > maxWaitMs) {
       console.warn(
-        `[SupabaseFetchGuard] Device ${deviceId.slice(0, 12)}... budget spin-wait timed out.`
+        `[SupabaseFetchGuard] Device ${deviceId.slice(0, 12)}... budget wait timed out.`
       );
       return;
     }
-    const deadline = Date.now() + 10;
-    while (Date.now() < deadline) {
-      /* spin */
-    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
   }
 }
 
 // ─── Fetch guard ────────────────────────────────────────────────────────────
 
 function createGuardedFetch(original: typeof globalThis.fetch): typeof globalThis.fetch {
-  return function guardedFetch(
+  return async function guardedFetch(
     input: RequestInfo | URL,
     init?: RequestInit
   ): Promise<Response> {
@@ -119,7 +119,7 @@ function createGuardedFetch(original: typeof globalThis.fetch): typeof globalThi
       const deviceId = getDeviceId();
 
       // 1. Enforce per-device rate-limit budget
-      waitForBudget(deviceId);
+      await waitForBudget(deviceId);
 
       const startTime = performance.now();
 
@@ -236,7 +236,7 @@ export function getFetchGuardTelemetry(): {
   installed: boolean;
   activeDevices: number;
 } {
-  const deviceId = typeof window !== "undefined" ? getDeviceId() : "server";
+  const deviceId = getDeviceId();
   return {
     currentRps: currentRate(deviceId),
     maxRps: MAX_REQUESTS_PER_SECOND_PER_USER,

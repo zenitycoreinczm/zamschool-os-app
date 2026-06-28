@@ -1,0 +1,135 @@
+# ZamSchool Gateway Worker — production config template
+# Full binding setup + deploy steps: README.md and wrangler.toml.example
+#
+# ── Route map ─────────────────────────────────────────────────────────
+# Worker path matches Next.js /api/* path directly (no rewrite prefix).
+#
+#   POST /api/upload                     → authorize via UPSTREAM_API, store in R2
+#   GET  /api/files/:key                 → serve from UPLOADS_BUCKET
+#   GET  cacheable /api/* (see src/types.ts) → proxy UPSTREAM_API + edge cache
+#   GET  other /api/*                    → proxy UPSTREAM_API
+#   POST|PUT|PATCH|DELETE queuable /api/* → upstream, or enqueue in DO if offline
+#   POST|PUT|PATCH|DELETE other /api/*   → proxy UPSTREAM_API
+#
+# ── Deployment ─────────────────────────────────────────────────────────
+# workers_dev = true  → deploy on workers.dev subdomain (dev/* preview)
+# When ready for production, replace workers_dev with a [[routes]] block
+# to pin the worker to your custom domain:
+#
+#   routes = [
+#     { pattern = "your-domain.com/api/*", zone_id = "<your-zone-id>" }
+#   ]
+#
+# Next.js opt-in: set NEXT_PUBLIC_GATEWAY_URL on clients only when deployed.
+# Leave unset for local `next dev` — app keeps using same-origin /api/*.
+
+name = "zamschool-gateway"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+workers_dev = true
+
+# ============================================================================
+# BINDING SETUP GUIDE
+# ============================================================================
+#
+# Each placeholder ID below must be replaced with a real Cloudflare resource
+# ID before deploying to production.  Run the corresponding commands to
+# create each resource, then copy the returned ID into this file.
+#
+# ── R2 Buckets ────────────────────────────────────────────────────────────
+# Command:     wrangler r2 bucket create zamschool-assets
+#              wrangler r2 bucket create zamschool-uploads
+# Purpose:     ASSETS_BUCKET — stores system assets (logos, templates, etc.)
+#              UPLOADS_BUCKET — stores user-uploaded files (avatars, docs, etc.)
+# These already exist if you've run the commands before.  No ID needed — the
+# bucket_name is enough for R2 bindings.
+#
+# ── KV Namespaces ─────────────────────────────────────────────────────────
+# Command:     wrangler kv namespace create SESSION_CACHE
+#              wrangler kv namespace create RATE_LIMITS
+# Purpose:     SESSION_CACHE — caches decoded JWT sessions so we don't need
+#                    to verify the signature on every request.
+#              RATE_LIMITS — per-IP/per-user rate-limit counters.
+# After creation, replace the "id" value below with the returned namespace ID.
+# Preview IDs are optional — only needed if you want separate dev/preview data.
+#
+# ── D1 Database (optional — offline read-replica) ────────────────────────
+# Command:     wrangler d1 create zamschool-offline
+# Purpose:     SCHOOL_DB — provides a local read-replica for offline-capable
+#                    GET queries.  Currently DISABLED (see src/d1.ts — the
+#                    sync functions are placeholder stubs).
+# After creation, replace "database_id" below with the returned DB UUID.
+# The D1 binding can be removed entirely if offline read-replica is not needed.
+#
+# ── Durable Object (offline mutation queue) ──────────────────────────────
+# DO name:    SchoolSyncQueue (defined in src/queue.ts)
+# Bindings:   SYNC_QUEUE
+# Purpose:    One DO instance per school.  When the upstream API is offline,
+#             POST/PUT/PATCH/DELETE requests are enqueued here and replayed
+#             later via the /flush endpoint.  The DO class is declared below
+#             in [durable_objects] and auto-migrated via [[migrations]].
+# No external setup needed — DOs are created on first use.
+# ============================================================================
+
+# ── R2 Buckets ─────────────────────────────────────────────────────────────
+[[r2_buckets]]
+binding = "ASSETS_BUCKET"
+bucket_name = "zamschool-assets"
+
+[[r2_buckets]]
+binding = "UPLOADS_BUCKET"
+bucket_name = "zamschool-uploads"
+
+# ── KV Namespaces ─────────────────────────────────────────────────────────
+[[kv_namespaces]]
+binding = "SESSION_CACHE"
+id = "SESSION_CACHE_NAMESPACE_ID"          # ← replace with real id (see guide above)
+# preview_id = "SESSION_CACHE_PREVIEW_ID"  # ← optional — for wrangler dev isolation
+
+[[kv_namespaces]]
+binding = "RATE_LIMITS"
+id = "RATE_LIMITS_NAMESPACE_ID"            # ← replace with real id (see guide above)
+# preview_id = "RATE_LIMITS_PREVIEW_ID"
+
+# ── D1 Database (offline read-replica — currently stubbed/disabled) ───────
+[[d1_databases]]
+binding = "SCHOOL_DB"
+database_name = "zamschool-offline"
+database_id = "SCHOOL_DB_ID"               # ← replace with real id (or remove this section)
+
+# ── Durable Objects (per-school offline mutation queue) ───────────────────
+[durable_objects]
+bindings = [
+  { name = "SYNC_QUEUE", class_name = "SchoolSyncQueue" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["SchoolSyncQueue"]
+
+# ── Non-secret configuration ──────────────────────────────────────────────
+[vars]
+# Next.js deployment URL (no trailing slash)
+UPSTREAM_API = "https://zamschoolos.site"
+CORS_ALLOWED_ORIGINS = "https://zamschoolos.site,http://localhost:3000"
+
+# JWT: use signature verification in production (requires secret below)
+JWT_VERIFY_MODE = "signature"
+SUPABASE_JWT_ISSUER = "https://<project-ref>.supabase.co/auth/v1"
+SUPABASE_JWT_AUDIENCE = "authenticated"
+
+# Edge rate limits (KV RATE_LIMITS binding). Set false for local wrangler dev.
+RATE_LIMIT_ENABLED = "true"
+
+# NEVER set in production — local wrangler dev only (see README.md)
+# ALLOW_INSECURE_JWT_DECODE = "true"
+
+# ── Secrets (wrangler secret put — do not commit values) ──────────────────
+# SUPABASE_JWT_SECRET  ← Supabase Dashboard → API → JWT Secret
+#   echo "<secret>" | wrangler secret put SUPABASE_JWT_SECRET
+
+# ── Local dev (.dev.vars or uncomment for wrangler dev) ───────────────────
+# JWT_VERIFY_MODE = "decode"
+# ALLOW_INSECURE_JWT_DECODE = "true"
+# RATE_LIMIT_ENABLED = "false"
+# UPSTREAM_API = "http://localhost:3000"

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import Pagination from "@/components/Pagination";
 import Table from "@/components/Table";
 import TableSearch from "@/components/TableSearch";
+import { Surface } from "@/components/workspace/Surface";
 import { useSearchParams } from "next/navigation";
 import { parseQueryState } from "@/lib/list-query-state";
 import { useListQuery } from "@/lib/use-list-query";
@@ -245,10 +246,16 @@ export default function AdminAssignmentsPage() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-10 flex items-center justify-center gap-3">
-        <Loader2 className="w-5 h-5 animate-spin text-sky-600" />
-        <span className="text-sm text-slate-500">Loading assignments...</span>
-      </div>
+      <Surface
+        variant="default"
+        role="status"
+        aria-live="polite"
+        className="flex items-center justify-center gap-3 p-10 text-sm text-slate-500"
+        as="div"
+      >
+        <Loader2 className="h-5 w-5 animate-spin text-sky-600" />
+        <span>Loading assignments...</span>
+      </Surface>
     );
   }
 
@@ -275,16 +282,17 @@ export default function AdminAssignmentsPage() {
             placeholder="Search assignments"
           />
           <button
+            type="button"
             onClick={openCreate}
-            className="inline-flex items-center gap-2 rounded-xl bg-sky-500 text-white px-4 py-2 text-sm font-semibold hover:bg-sky-400"
+            className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-sky-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200"
           >
-            <Plus className="w-4 h-4" /> Add Assignment
+            <Plus className="h-4 w-4" /> Add Assignment
           </button>
         </div>
       </div>
 
       {formOpen ? (
-        <div className="rounded-2xl border border-slate-200 p-5 bg-slate-50">
+        <Surface variant="inset" className="p-5" as="div">
           <h3 className="text-sm font-semibold text-slate-900 mb-3">
             {editingId ? "Edit Assignment" : "New Assignment"}
           </h3>
@@ -352,27 +360,29 @@ export default function AdminAssignmentsPage() {
           </div>
           <div className="mt-4 flex items-center gap-2">
             <button
+              type="button"
               onClick={onSave}
               disabled={saving}
-              className="px-4 py-2 rounded-lg bg-slate-900 text-white text-sm font-medium flex items-center gap-2 hover:bg-slate-800 disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 disabled:opacity-60"
             >
               {saving ? "Saving..." : (
                 <>
-                  <Save className="w-4 h-4" /> Save
+                  <Save className="h-4 w-4" /> Save
                 </>
               )}
             </button>
             <button
+              type="button"
               onClick={() => setFormOpen(false)}
-              className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium flex items-center gap-2 hover:bg-slate-100"
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200"
             >
-              <X className="w-4 h-4" /> Cancel
+              <X className="h-4 w-4" /> Cancel
             </button>
           </div>
-        </div>
+        </Surface>
       ) : null}
 
-      <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+      <Surface variant="default" className="overflow-hidden p-0" as="div">
         <Table columns={columns} renderRow={renderRow} data={visibleRows} />
         <Pagination
           page={page}
@@ -380,7 +390,7 @@ export default function AdminAssignmentsPage() {
           total={filteredRows.length}
           onPageChange={(nextPage) => updateQuery({ page: nextPage })}
         />
-      </div>
+      </Surface>
     </div>
   );
 }

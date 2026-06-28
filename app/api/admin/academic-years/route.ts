@@ -1,8 +1,16 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { z } from "zod";
-import { applyRateLimit, getClientIp, parseJsonWithSchema, safeErrorMessage } from "@/lib/server-guards";
+import {
+  applyRateLimit,
+  getClientIp,
+  parseJsonWithSchema,
+  safeErrorMessage,
+} from "@/lib/server-guards";
 import { requireAdminContext } from "@/lib/server-auth";
+import { auditDomainWrite } from "@/lib/audit-domain";
+import { enforceRouteAccess } from "@/lib/route-enforcement";
+import { invalidateByTag } from "@/lib/enhanced-cache";
 
 const createAcademicYearSchema = z.object({
   name: z.string().min(1),
@@ -27,10 +35,12 @@ export async function GET(req: Request) {
 
     const { data, error } = await supabaseAdmin
       .from("academic_years")
-      .select(`
+      .select(
+        `
         *,
         terms(id, name, start_date, end_date, is_active)
-      `)
+      `,
+      )
       .eq("school_id", schoolId)
       .order("created_at", { ascending: false });
 
@@ -38,13 +48,22 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to fetch academic years") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to fetch academic years") },
+      { status: 500 },
+    );
   }
 }
 
 export async function POST(req: Request) {
   try {
-    const access = await requireAdminContext(req);
+    const access = await enforceRouteAccess(req, {
+      allowedRoles: ["ACADEMIC_ADMIN", "ADMIN", "SUPER_ADMIN"],
+      feature: "academic_years",
+      featureAction: "create",
+      domain: "academic",
+      domainAction: "create",
+    });
     if (!access.ok) return access.response;
     const { schoolId } = access.context;
     const ip = getClientIp(req);
@@ -56,7 +75,7 @@ export async function POST(req: Request) {
     if (!rate.allowed) {
       return NextResponse.json(
         { error: "Too many requests. Please try again shortly." },
-        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } }
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
       );
     }
 
@@ -86,15 +105,35 @@ export async function POST(req: Request) {
 
     if (error) throw error;
 
+    await auditDomainWrite({
+      schoolId,
+      userId: access.context.userId,
+      action: "academic_years.create",
+      entityType: "academic_year",
+      entityId: data.id,
+      newData: data,
+      ipAddress: getClientIp(req),
+    });
+
+    await invalidateByTag("dashboard");
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to create academic year") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to create academic year") },
+      { status: 500 },
+    );
   }
 }
 
 export async function PUT(req: Request) {
   try {
-    const access = await requireAdminContext(req);
+    const access = await enforceRouteAccess(req, {
+      allowedRoles: ["ACADEMIC_ADMIN", "ADMIN", "SUPER_ADMIN"],
+      feature: "academic_years",
+      featureAction: "update",
+      domain: "academic",
+      domainAction: "update",
+    });
     if (!access.ok) return access.response;
     const { schoolId } = access.context;
     const ip = getClientIp(req);
@@ -106,7 +145,7 @@ export async function PUT(req: Request) {
     if (!rate.allowed) {
       return NextResponse.json(
         { error: "Too many requests. Please try again shortly." },
-        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } }
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
       );
     }
 
@@ -145,22 +184,45 @@ export async function PUT(req: Request) {
 
     if (error) throw error;
 
+    await auditDomainWrite({
+      schoolId,
+      userId: access.context.userId,
+      action: "academic_years.update",
+      entityType: "academic_year",
+      entityId: body.id,
+      newData: data,
+      ipAddress: getClientIp(req),
+    });
+
+    await invalidateByTag("dashboard");
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to update academic year") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to update academic year") },
+      { status: 500 },
+    );
   }
 }
 
 export async function DELETE(req: Request) {
   try {
-    const access = await requireAdminContext(req);
+    const access = await enforceRouteAccess(req, {
+      allowedRoles: ["ACADEMIC_ADMIN", "ADMIN", "SUPER_ADMIN"],
+      feature: "academic_years",
+      featureAction: "delete",
+      domain: "academic",
+      domainAction: "delete",
+    });
     if (!access.ok) return access.response;
     const { schoolId } = access.context;
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 
     if (!id) {
-      return NextResponse.json({ error: "Academic year ID is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Academic year ID is required" },
+        { status: 400 },
+      );
     }
 
     const { error } = await supabaseAdmin
@@ -171,8 +233,21 @@ export async function DELETE(req: Request) {
 
     if (error) throw error;
 
+    await auditDomainWrite({
+      schoolId,
+      userId: access.context.userId,
+      action: "academic_years.delete",
+      entityType: "academic_year",
+      entityId: id,
+      ipAddress: getClientIp(req),
+    });
+
+    await invalidateByTag("dashboard");
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to delete academic year") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to delete academic year") },
+      { status: 500 },
+    );
   }
 }

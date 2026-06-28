@@ -22,9 +22,13 @@ export function useWorkspaceSummary() {
     setLoading(true);
     setError("");
     try {
-      const body = await adminApiJson<SummaryPayload>("/api/workspace/summary");
-      setMetrics(body.data?.metrics || []);
-      setHighlights(body.data?.highlights || []);
+      const body = await adminApiJson<SummaryPayload | undefined>(
+        "/api/workspace/summary",
+      );
+      setMetrics(Array.isArray(body?.data?.metrics) ? body.data.metrics : []);
+      setHighlights(
+        Array.isArray(body?.data?.highlights) ? body.data.highlights : [],
+      );
     } catch (err: unknown) {
       setMetrics([]);
       setHighlights([]);

@@ -12,6 +12,7 @@ export type StaffInviteRoleValue =
   | "hr_admin"
   | "ict_admin"
   | "discipline_admin"
+  | "registrar"
   | "teacher";
 
 export type StaffInviteRoleOption = {
@@ -57,6 +58,11 @@ export const STAFF_INVITE_ROLE_OPTIONS: StaffInviteRoleOption[] = [
     hint: "Discipline records and student conduct workflows.",
   },
   {
+    value: "registrar",
+    label: getRoleDisplayLabel("registrar"),
+    hint: "Student admissions, parent registration, and transfers.",
+  },
+  {
     value: "guidance_office",
     label: getRoleDisplayLabel("guidance_office"),
     hint: "Student welfare, guidance, and counselling support.",
@@ -73,8 +79,22 @@ export const STAFF_INVITE_ROLE_OPTIONS: StaffInviteRoleOption[] = [
   },
 ];
 
-export function getStaffInviteRoleLabel(role: string | null | undefined): string {
-  const normalized = String(role || "").trim().toLowerCase();
-  const match = STAFF_INVITE_ROLE_OPTIONS.find((option) => option.value === normalized);
+/**
+ * Role options for the Head Teacher (principal) staff invitation page.
+ * Excludes teacher, student, and parent — those are managed via
+ * the Users section or the registrar/teacher workflows.
+ */
+export const PRINCIPAL_STAFF_INVITE_ROLE_OPTIONS: StaffInviteRoleOption[] =
+  STAFF_INVITE_ROLE_OPTIONS.filter((option) => option.value !== "teacher");
+
+export function getStaffInviteRoleLabel(
+  role: string | null | undefined,
+): string {
+  const normalized = String(role || "")
+    .trim()
+    .toLowerCase();
+  const match = STAFF_INVITE_ROLE_OPTIONS.find(
+    (option) => option.value === normalized,
+  );
   return match?.label || getRoleDisplayLabel(role);
 }

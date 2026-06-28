@@ -31,6 +31,7 @@ const LABEL_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   Staff: UserCog,
   Invites: UserCog,
   "Pending Invites": UserPlus,
+  "Pending Invites ": UserPlus,
   Inbox: MessageSquare,
   Accounts: Users,
   "Audit (7d)": ShieldCheck,
@@ -39,6 +40,7 @@ const LABEL_ICONS: Record<string, ComponentType<{ className?: string }>> = {
   Unread: MessageSquare,
   Children: Users,
   Messages: MessageSquare,
+  Timetable: School,
 };
 
 export function metricsToStatCards(

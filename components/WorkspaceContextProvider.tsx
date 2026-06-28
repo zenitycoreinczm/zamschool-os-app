@@ -17,7 +17,10 @@ import {
   readCachedWorkspaceContext,
   type WorkspaceContextData,
 } from "@/lib/workspace-context-client";
-import { normalizeAppWorkspaceRole, type AppWorkspaceRole } from "@/lib/workspace-role";
+import {
+  normalizeAppWorkspaceRole,
+  type AppWorkspaceRole,
+} from "@/lib/workspace-role";
 
 type WorkspaceContextValue = {
   data: WorkspaceContextData | null;
@@ -28,9 +31,24 @@ type WorkspaceContextValue = {
   invalidate: () => void;
 };
 
-const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
+const fallbackWorkspaceContext: WorkspaceContextValue = {
+  data: null,
+  role: null,
+  loading: true,
+  error: "",
+  refresh: async () => {},
+  invalidate: () => {},
+};
 
-export function WorkspaceContextProvider({ children }: { children: ReactNode }) {
+const WorkspaceContext = createContext<WorkspaceContextValue>(
+  fallbackWorkspaceContext,
+);
+
+export function WorkspaceContextProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
   const initial = readCachedWorkspaceContext();
   const [data, setData] = useState<WorkspaceContextData | null>(initial);
   const [loading, setLoading] = useState(!initial);
@@ -48,7 +66,11 @@ export function WorkspaceContextProvider({ children }: { children: ReactNode }) 
       const next = await fetchWorkspaceContext({ force: options.force });
       setData(next);
     } catch (loadError: unknown) {
-      setError(loadError instanceof Error ? loadError.message : "Failed to load workspace");
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Failed to load workspace",
+      );
       if (options.force && !dataRef.current) {
         setData(null);
       }
@@ -67,7 +89,7 @@ export function WorkspaceContextProvider({ children }: { children: ReactNode }) 
     async (options: { force?: boolean } = {}) => {
       await load({ force: options.force ?? true });
     },
-    [load]
+    [load],
   );
 
   const invalidate = useCallback(() => {
@@ -75,7 +97,10 @@ export function WorkspaceContextProvider({ children }: { children: ReactNode }) 
     setData(null);
   }, []);
 
-  const role = useMemo(() => normalizeAppWorkspaceRole(data?.role), [data?.role]);
+  const role = useMemo(
+    () => normalizeAppWorkspaceRole(data?.role),
+    [data?.role],
+  );
 
   const value = useMemo<WorkspaceContextValue>(
     () => ({
@@ -86,16 +111,16 @@ export function WorkspaceContextProvider({ children }: { children: ReactNode }) 
       refresh,
       invalidate,
     }),
-    [data, role, loading, error, refresh, invalidate]
+    [data, role, loading, error, refresh, invalidate],
   );
 
-  return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
+  return (
+    <WorkspaceContext.Provider value={value}>
+      {children}
+    </WorkspaceContext.Provider>
+  );
 }
 
 export function useWorkspaceContext() {
-  const context = useContext(WorkspaceContext);
-  if (!context) {
-    throw new Error("useWorkspaceContext must be used within WorkspaceContextProvider");
-  }
-  return context;
+  return useContext(WorkspaceContext) || fallbackWorkspaceContext;
 }

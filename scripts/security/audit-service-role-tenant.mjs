@@ -23,13 +23,14 @@ const GLOBAL_TABLES = new Set([
 const TOKEN_SCOPED_TABLES = new Set(["staff_invitations"]);
 
 const TENANT_SCOPED_HINT =
-  /school_id|schoolId|school_id:\s*schoolId|requireActorContext|requireAdminContext|requireTeacherContext|requireStudentContext|requireParentContext|requirePaymentsContext|requireFinancial|requireSuperAdminContext|requireSchoolStaffContext|profileIdentityOrFilter|loadNotificationsForUser|countUnreadNotificationsForUser|authenticateAccountPortalRequest|\.eq\("id",|\.in\("id",|\.in\("student_id",|\.eq\("assignment_id",|school_id:\s*access/i;
+  /school_id|schoolId|school_id:\s*schoolId|requireActorContext|requireAdminContext|requireTeacherContext|requireStudentContext|requireParentContext|requirePaymentsContext|requireFinancial|requireSuperAdminContext|requireSchoolStaffContext|profileIdentityOrFilter|loadNotificationsForUser|getUnreadCountsForUser|countUnreadNotificationsForUser|authenticateAccountPortalRequest|\.eq\("id",|\.in\("id",|\.in\("student_id",|\.eq\("assignment_id",|school_id:\s*access/i;
 
 const FROM_RE = /supabaseAdmin\s*\.\s*from\s*\(\s*["'`]([^"'`]+)["'`]\s*\)/g;
 
 /** Documented exceptions: cross-tenant lookups that are safe by design. */
 const DOCUMENTED_EXCEPTIONS = [
   { file: "app/api/auth/forgot-password/route.ts", table: "profiles", reason: "Cross-tenant email lookup for password reset (no school context)" },
+  { file: "app/api/staff/invitations/route.ts", table: "staff_invitations", reason: "Insert only — scoped via payload's school_id/created_by/invited_by/accepted_by rather than an `.eq()` chain. Heuristic flagged it because its scan window doesn't see the insert payload." },
 ];
 
 function listTsFiles(dir, prefix = "") {

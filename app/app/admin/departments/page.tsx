@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Building2, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { adminApiJson } from "@/lib/admin-browser-api";
+import { Surface } from "@/components/workspace/Surface";
 
 type Department = {
   id: string;
@@ -155,7 +156,7 @@ export default function AdminDepartmentsPage() {
 
   return (
     <div className="space-y-6 py-2">
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 md:p-6">
+      <Surface variant="default" className="p-5 md:p-6">
         <div className="flex items-start gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-sky-50 text-sky-600">
             <Building2 className="h-5 w-5" />
@@ -167,10 +168,10 @@ export default function AdminDepartmentsPage() {
             </p>
           </div>
         </div>
-      </section>
+      </Surface>
 
       <section className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+        <Surface variant="default" className="p-5" as="div">
           <h2 className="text-sm font-semibold text-slate-900">
             {editingId ? "Edit department" : "Add department"}
           </h2>
@@ -214,7 +215,7 @@ export default function AdminDepartmentsPage() {
               type="button"
               onClick={() => void saveDepartment()}
               disabled={!canSave || saving}
-              className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 disabled:opacity-60"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               {editingId ? "Save changes" : "Add department"}
@@ -223,15 +224,15 @@ export default function AdminDepartmentsPage() {
               <button
                 type="button"
                 onClick={resetForm}
-                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200"
               >
                 Cancel
               </button>
             ) : null}
           </div>
-        </div>
+        </Surface>
 
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <Surface variant="default" className="overflow-hidden p-0" as="div">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-left text-slate-500">
               <tr>
@@ -268,7 +269,7 @@ export default function AdminDepartmentsPage() {
                         <button
                           type="button"
                           onClick={() => startEdit(row)}
-                          className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"
+                          className="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200"
                           aria-label={`Edit ${row.name}`}
                         >
                           <Pencil className="h-4 w-4" />
@@ -277,7 +278,7 @@ export default function AdminDepartmentsPage() {
                           type="button"
                           onClick={() => void deleteDepartment(row)}
                           disabled={Boolean(row.is_default)}
-                          className="rounded-lg border border-slate-200 p-2 text-rose-600 hover:bg-rose-50 disabled:opacity-40"
+                          className="rounded-lg border border-slate-200 p-2 text-rose-600 hover:bg-rose-50 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-200"
                           aria-label={`Delete ${row.name}`}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -289,7 +290,7 @@ export default function AdminDepartmentsPage() {
               )}
             </tbody>
           </table>
-        </div>
+        </Surface>
       </section>
     </div>
   );

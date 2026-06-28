@@ -6,11 +6,27 @@ import { Loader2, Megaphone, Radio, Users } from "lucide-react";
 import Announcements from "@/components/Announcements";
 import { AnnouncementComposer } from "@/components/admin/AnnouncementComposer";
 import { AdminPageHero } from "@/components/admin/AdminPageHero";
+import { Surface } from "@/components/workspace/Surface";
 import { adminApiJson } from "@/lib/admin-browser-api";
+import { useWorkspaceContext } from "@/components/WorkspaceContextProvider";
+import { normalizeRole } from "@/lib/roles";
+
+// Roles that can create/manage announcements.  Only these roles see the
+// composer; all others see the read-only feed.
+const ANNOUNCEMENT_MANAGER_ROLES = new Set([
+  "PRINCIPAL",
+  "ADMIN",
+  "DEPUTY_HEAD",
+  "SUPER_ADMIN",
+]);
 
 type ClassOption = { id: string; label: string };
 
 export default function AppAnnouncementsPage() {
+  const { role: workspaceRole } = useWorkspaceContext();
+  const canManageAnnouncements = ANNOUNCEMENT_MANAGER_ROLES.has(
+    normalizeRole(workspaceRole) || "",
+  );
   const [classOptions, setClassOptions] = useState<ClassOption[]>([]);
   const [loadingClasses, setLoadingClasses] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -71,20 +87,28 @@ export default function AppAnnouncementsPage() {
         ]}
       />
 
-      <AnnouncementComposer
-        classOptions={classOptions}
-        onPublished={() => setRefreshKey((value) => value + 1)}
-      />
+      {canManageAnnouncements && (
+        <AnnouncementComposer
+          classOptions={classOptions}
+          onPublished={() => setRefreshKey((value) => value + 1)}
+        />
+      )}
 
       {loadingClasses ? (
-        <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-8 text-sm text-slate-500">
+        <Surface
+          variant="default"
+          role="status"
+          aria-live="polite"
+          className="flex items-center gap-2 px-5 py-8 text-sm text-slate-500"
+          as="div"
+        >
           <Loader2 className="h-4 w-4 animate-spin text-sky-500" />
           Loading announcement feeds...
-        </div>
+        </Surface>
       ) : (
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-6">
+        <Surface variant="default" className="p-4 md:p-6">
           <Announcements key={refreshKey} />
-        </div>
+        </Surface>
       )}
     </div>
   );

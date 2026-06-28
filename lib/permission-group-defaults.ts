@@ -24,7 +24,7 @@ export const DEFAULT_PERMISSION_GROUPS: PermissionGroupSeed[] = [
   {
     name: "Head Teacher Authority",
     description:
-      "Full school leadership with override authority. Head Teacher (principal) is the registrant and has final governance authority.",
+      "Full school leadership access for setup, daily operations, approvals, audit review, and workflow escalation authority.",
     roles: ["PRINCIPAL"],
     features: [
       full("users"),
@@ -32,10 +32,15 @@ export const DEFAULT_PERMISSION_GROUPS: PermissionGroupSeed[] = [
       full("subjects"),
       full("attendance", false),
       full("grades"),
-      full("settings", false),
-      full("announcements"),
-      full("messages"),
-      full("notifications"),
+      full("assignments"),
+      full("timetable"),
+      full("grading_scales", false),
+      full("academic_years", false),
+      full("terms", false),
+      writable("settings"),
+      writable("announcements"),
+      writable("messages"),
+      writable("notifications"),
       full("finance"),
       full("payments"),
       full("audit"),
@@ -64,14 +69,18 @@ export const DEFAULT_PERMISSION_GROUPS: PermissionGroupSeed[] = [
   },
   {
     name: "Deputy Head Authority",
-    description: "Delegated academic and operational oversight",
+    description: "Academic quality control — review and validate, not create.",
     roles: ["DEPUTY_HEAD"],
     features: [
       readOnly("users"),
-      writable("classes"),
-      writable("subjects"),
+      readOnly("classes"),
+      readOnly("subjects"),
       writable("attendance"),
       writable("grades"),
+      readOnly("timetable"),
+      readOnly("grading_scales"),
+      readOnly("academic_years"),
+      readOnly("terms"),
       writable("announcements"),
       writable("messages"),
       writable("notifications"),
@@ -85,25 +94,56 @@ export const DEFAULT_PERMISSION_GROUPS: PermissionGroupSeed[] = [
   },
   {
     name: "Guidance Office",
-    description: "Student welfare, discipline, and privacy-focused oversight",
-    roles: ["GUIDANCE_OFFICE", "DISCIPLINE_ADMIN"],
+    description: "Student welfare, counseling, and privacy-focused oversight",
+    roles: ["GUIDANCE_OFFICE"],
     features: [
       readOnly("users"),
       readOnly("attendance"),
-      readOnly("grades"),
+      writable("discipline"),
+      writable("messages"),
+    ],
+  },
+  {
+    name: "Discipline Management",
+    description: "Student conduct administration — no academic data access.",
+    roles: ["DISCIPLINE_ADMIN"],
+    features: [
+      readOnly("users"),
+      readOnly("attendance"),
       writable("discipline"),
       writable("messages"),
     ],
   },
   {
     name: "ICT Administration",
-    description: "Technical support, session visibility, and system recovery. No academic data access.",
+    description:
+      "Technical support, session visibility, and system recovery. No academic data access.",
     roles: ["ICT_ADMIN"],
-    features: [writable("users"), writable("settings"), full("sessions"), readOnly("audit")],
+    features: [
+      writable("users"),
+      writable("settings"),
+      full("sessions"),
+      readOnly("audit"),
+    ],
+  },
+  {
+    name: "Admissions & Registrar",
+    description:
+      "Student admissions, parent registration, transfers, and biodata management. No finance, grading, or HR access.",
+    roles: ["REGISTRAR"],
+    features: [
+      writable("users"),
+      readUpdate("classes"),
+      readOnly("attendance"),
+      readOnly("grades"),
+      writable("messages"),
+      writable("notifications"),
+    ],
   },
   {
     name: "Academic Administration",
-    description: "Academic structure, grades, assignments, and timetable support",
+    description:
+      "Academic structure, grades, assignments, timetables, and academic calendar.",
     roles: ["ACADEMIC_ADMIN"],
     features: [
       readOnly("users"),
@@ -112,6 +152,10 @@ export const DEFAULT_PERMISSION_GROUPS: PermissionGroupSeed[] = [
       readOnly("attendance"),
       writable("grades"),
       writable("assignments"),
+      writable("timetable"),
+      writable("grading_scales"),
+      writable("academic_years"),
+      writable("terms"),
     ],
   },
   {
@@ -141,7 +185,11 @@ export type FeaturePerms = {
   scope: string;
 };
 
-function full(featureKey: string, canDelete = true, scope = "school"): PermissionFeatureSeed {
+function full(
+  featureKey: string,
+  canDelete = true,
+  scope = "school",
+): PermissionFeatureSeed {
   return {
     feature_key: featureKey,
     can_create: true,
@@ -174,9 +222,23 @@ function readOnly(featureKey: string, scope = "school"): PermissionFeatureSeed {
   };
 }
 
+function readUpdate(
+  featureKey: string,
+  scope = "school",
+): PermissionFeatureSeed {
+  return {
+    feature_key: featureKey,
+    can_create: false,
+    can_read: true,
+    can_update: true,
+    can_delete: false,
+    scope,
+  };
+}
+
 export function mergeFeaturePermission(
   existing: FeaturePerms | undefined,
-  incoming: FeaturePerms
+  incoming: FeaturePerms,
 ): FeaturePerms {
   if (!existing) return incoming;
   return {
@@ -192,7 +254,9 @@ export function mergeFeaturePermission(
  * Pre-computed role → feature map from DEFAULT_PERMISSION_GROUPS.
  * Used only when a school has not yet been seeded with permission_features rows.
  */
-export function buildRolePermissionFallback(): Partial<Record<KnownRole, Record<string, FeaturePerms>>> {
+export function buildRolePermissionFallback(): Partial<
+  Record<KnownRole, Record<string, FeaturePerms>>
+> {
   const result: Partial<Record<KnownRole, Record<string, FeaturePerms>>> = {};
 
   for (const group of DEFAULT_PERMISSION_GROUPS) {
@@ -211,7 +275,7 @@ export function buildRolePermissionFallback(): Partial<Record<KnownRole, Record<
         };
         roleMap[feature.feature_key] = mergeFeaturePermission(
           roleMap[feature.feature_key],
-          perms
+          perms,
         );
       }
       result[normalizedRole] = roleMap;

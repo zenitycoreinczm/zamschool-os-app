@@ -10,6 +10,7 @@ import {
   Megaphone,
   MessageSquare,
   School,
+  Shield,
   UserPlus,
   Users,
 } from "lucide-react";
@@ -28,7 +29,10 @@ import { adminApiJson } from "@/lib/admin-browser-api";
 import { useWorkspaceContext } from "@/components/WorkspaceContextProvider";
 import type { WorkspaceMetric } from "@/lib/workspace-summary";
 
-type InitResults = Record<string, { status: string; count?: number; error?: string }>;
+type InitResults = Record<
+  string,
+  { status: string; count?: number; error?: string }
+>;
 
 const HERO_METRIC_ICONS = [School, UserPlus, ClipboardCheck, CreditCard];
 
@@ -50,7 +54,9 @@ export default function PrincipalWorkspace() {
   const { data: workspace } = useWorkspaceContext();
   const [setupLoading, setSetupLoading] = useState(true);
   const [initializing, setInitializing] = useState(false);
-  const [setupStatus, setSetupStatus] = useState<SchoolSetupStatus | null>(null);
+  const [setupStatus, setSetupStatus] = useState<SchoolSetupStatus | null>(
+    null,
+  );
   const [lastResults, setLastResults] = useState<InitResults | null>(null);
   const [setupDismissed, setSetupDismissed] = useState(true);
   const [metricsLoading, setMetricsLoading] = useState(true);
@@ -72,7 +78,8 @@ export default function PrincipalWorkspace() {
           settings?: { setting_key: string }[];
         };
       }>("/api/school/initialize");
-      const data = (body && typeof body === "object" ? body.data : undefined) ?? {};
+      const data =
+        (body && typeof body === "object" ? body.data : undefined) ?? {};
 
       setSetupStatus({
         initialized: Boolean(data.initialized),
@@ -81,7 +88,10 @@ export default function PrincipalWorkspace() {
         settings: data.settings?.length || 0,
       });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to load school setup status";
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Failed to load school setup status";
       toast.error(message);
     } finally {
       setSetupLoading(false);
@@ -113,15 +123,21 @@ export default function PrincipalWorkspace() {
     setInitializing(true);
     const toastId = toast.loading("Initializing school defaults...");
     try {
-      const body = await adminApiJson<{ results?: InitResults }>("/api/school/initialize", {
-        method: "POST",
-      });
-      setLastResults((body && typeof body === "object" ? body.results : undefined) ?? null);
+      const body = await adminApiJson<{ results?: InitResults }>(
+        "/api/school/initialize",
+        {
+          method: "POST",
+        },
+      );
+      setLastResults(
+        (body && typeof body === "object" ? body.results : undefined) ?? null,
+      );
       await loadSetupStatus();
       await loadSummary();
       toast.success("School defaults are ready", { id: toastId });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to initialize school";
+      const message =
+        err instanceof Error ? err.message : "Failed to initialize school";
       toast.error(message, { id: toastId });
     } finally {
       setInitializing(false);
@@ -164,21 +180,34 @@ export default function PrincipalWorkspace() {
         eyebrow="Head Teacher overview"
         title={schoolName}
         description={`Welcome back, ${displayName}. Leadership snapshot for ${yearTerm}.`}
-        accent="indigo"
+        accent="sky"
         stats={heroStats}
         actions={
           <>
-            <HeroAction href="/app/admin/users" label="Users & accounts" icon={Users} />
-            <HeroAction href="/app/announcements" label="Post announcement" icon={Megaphone} variant="secondary" />
+            <HeroAction
+              href="/app/admin/audit"
+              label="Audit trail"
+              icon={Shield}
+            />
+            <HeroAction
+              href="/app/announcements"
+              label="Post announcement"
+              icon={Megaphone}
+              variant="secondary"
+            />
           </>
         }
       />
 
       {hasInbox ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-workspace-xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-sm text-indigo-950">
+        <div className="flex flex-wrap items-center gap-2 rounded-workspace-xl border border-sky-100 bg-sky-50/60 px-4 py-3 text-sm text-sky-950">
           <span className="font-medium">Needs your attention:</span>
           {unreadMessages > 0 ? (
-            <InboxChip href="/app/messages" label={`${formatCount(unreadMessages)} messages`} icon={MessageSquare} />
+            <InboxChip
+              href="/app/messages"
+              label={`${formatCount(unreadMessages)} messages`}
+              icon={MessageSquare}
+            />
           ) : null}
           {unreadNotifications > 0 ? (
             <InboxChip
@@ -244,7 +273,9 @@ function HeroAction({
 }
 
 function cnIcon(variant: "primary" | "secondary") {
-  return variant === "primary" ? "h-4 w-4 text-indigo-600" : "h-4 w-4 text-white/90";
+  return variant === "primary"
+    ? "h-4 w-4 text-sky-600"
+    : "h-4 w-4 text-white/90";
 }
 
 function InboxChip({
@@ -259,7 +290,7 @@ function InboxChip({
   return (
     <Link
       href={href}
-      className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200/80 bg-white px-3 py-1 text-xs font-semibold text-indigo-800 hover:bg-indigo-50"
+      className="inline-flex items-center gap-1.5 rounded-full border border-sky-200/80 bg-white px-3 py-1 text-xs font-semibold text-sky-800 hover:bg-sky-50"
     >
       <Icon className="h-3.5 w-3.5" />
       {label}

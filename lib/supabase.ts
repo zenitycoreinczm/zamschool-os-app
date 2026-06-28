@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { createCookieBackedBrowserClient } from "./supabase-browser-client";
 
 const supabaseUrl =
@@ -18,14 +19,6 @@ const isBrowser = typeof window !== "undefined";
 const createSupabaseClient = () => createClient(supabaseUrl, supabaseAnonKey);
 type SupabaseBrowserClient = ReturnType<typeof createSupabaseClient>;
 
-function getServerServiceRoleKey() {
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-  if (!serviceRoleKey && !isBuildTime) {
-    throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY for server admin client.");
-  }
-  return serviceRoleKey;
-}
-
 export const supabase: SupabaseBrowserClient = isBrowser
   ? createCookieBackedBrowserClient<SupabaseBrowserClient>({
       storage: globalThis as Record<string, unknown>,
@@ -40,17 +33,8 @@ export const supabase: SupabaseBrowserClient = isBrowser
 // In the browser we must not create a second auth client with the same storage key.
 export const supabaseAdmin = isBrowser
   ? supabase
-  : supabaseUrl && getServerServiceRoleKey()
-    ? createClient(
-        supabaseUrl,
-        getServerServiceRoleKey(),
-        {
-          auth: {
-            autoRefreshToken: false,
-            persistSession: false,
-          },
-        }
-      )
+  : supabaseUrl && !isBuildTime
+    ? getSupabaseAdmin()
     : (null as unknown as ReturnType<typeof createClient>);
 
 export type UserRole = "ADMIN" | "TEACHER" | "STUDENT" | "PARENT";

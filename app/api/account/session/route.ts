@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { authenticateAccountPortalRequest } from "@/lib/account-portal-auth";
-import { applyPlatformRateLimit, platformRateLimitResponse } from "@/lib/platform-api-guard";
+import {
+  applyPlatformRateLimit,
+  platformRateLimitResponse,
+} from "@/lib/platform-api-guard";
+import { fetchProfileByIdentity } from "@/lib/profile-lookup";
 import { safeErrorMessage } from "@/lib/server-guards";
 import { supabaseAdmin } from "@/lib/supabase";
 import { normalizeRole } from "@/lib/roles";
@@ -13,26 +17,40 @@ export async function GET(req: Request) {
 
     const rate = await applyPlatformRateLimit({
       scope: "account-session-read",
+      schoolId: actor.schoolId,
       req,
       userId: actor.userId,
       preset: "heavyRead",
     });
     if (!rate.allowed) return platformRateLimitResponse(rate);
 
-    // Fetch the user's profile
-    const { data: profile, error: profileError } = await supabaseAdmin
-      .from("profiles")
-      .select("id, email, role, first_name, last_name, school_id, last_login, created_at")
-      .eq("id", actor.userId)
-      .eq("school_id", actor.schoolId)
-      .maybeSingle();
+    const columns =
+      "id, email, role, first_name, last_name, school_id, last_login, created_at";
+    const profileResult = actor.profileId
+      ? await supabaseAdmin
+          .from("profiles")
+          .select(columns)
+          .eq("id", actor.profileId)
+          .eq("school_id", actor.schoolId)
+          .maybeSingle()
+      : await fetchProfileByIdentity(
+          supabaseAdmin as never,
+          actor.userId,
+          columns,
+          actor.email,
+        );
+
+    const { data: profile, error: profileError } = profileResult;
 
     if (profileError) {
       throw profileError;
     }
 
     if (!profile) {
-      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Profile not found for this signed-in account" },
+        { status: 404 },
+      );
     }
 
     // Fetch school name
@@ -60,9 +78,19 @@ export async function GET(req: Request) {
       },
     });
   } catch (error: unknown) {
-    return NextResponse.json(
-      { error: safeErrorMessage(error, "Failed to load session") },
-      { status: 500 }
-    );
+    const message = safeErrorMessage(error, "Failed to load session");
+    // Server-side log so the cause is recoverable in dev/staging logs.
+    // Without this we'd only see "Failed to load session" in the client toast.
+    if (process.env.NODE_ENV !== "production") {
+      console.error("[/api/account/session] 500", error);
+    }
+    const body: { error: string; cause?: string } = { error: message };
+    if (process.env.NODE_ENV !== "production") {
+      // Surface the underlying detail in non-prod so the dev console +
+      // the UI toast carry the real reason. Stays out of prod so we
+      // don't leak internal column names, query snippets, etc.
+      body.cause = safeErrorMessage(error, message);
+    }
+    return NextResponse.json(body, { status: 500 });
   }
 }

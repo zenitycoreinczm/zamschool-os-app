@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import TeacherDashboard from "@/components/teacher/dashboard/TeacherDashboard";
 
-export default function AppTeacherRedirectPage() {
-  redirect("/teacher");
+export default function TeacherDashboardPage() {
+  return <TeacherDashboard />;
 }

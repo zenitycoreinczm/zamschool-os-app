@@ -110,6 +110,7 @@ export function MessageQuotaPills({ quota }: { quota: MessageSendQuota | null })
 type MessagesPageHeaderProps = {
   title: string;
   description: string;
+  eyebrow?: string;
   quota?: MessageSendQuota | null;
   onCompose?: () => void;
   composeOpen?: boolean;
@@ -123,6 +124,7 @@ type MessagesPageHeaderProps = {
 export function MessagesPageHeader({
   title,
   description,
+  eyebrow = "School inbox",
   quota,
   onCompose,
   composeOpen,
@@ -152,7 +154,7 @@ export function MessagesPageHeader({
             </div>
             <div className="min-w-0">
               <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-white/65">
-                School inbox
+                {eyebrow}
               </p>
               <h1 className="mt-1 text-xl font-bold tracking-tight sm:text-2xl">{title}</h1>
               <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-white/88">

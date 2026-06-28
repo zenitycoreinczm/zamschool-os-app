@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -25,15 +25,16 @@ import {
 } from "@/lib/account-profile-client";
 import { invalidateWorkspaceContext as clearModuleCache } from "@/lib/workspace-context-client";
 import { useWorkspaceContext } from "@/components/WorkspaceContextProvider";
+import { adminApiFetch } from "@/lib/admin-browser-api";
 import { getRemoteImageConfigMessage } from "@/lib/remote-image-hosts";
 import { getRoleDisplayLabel } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import { primaryButton, secondaryButton } from "@/lib/workspace-design";
 
-const fieldClass =
+export const fieldClass =
   "w-full rounded-workspace-lg border border-workspace-border bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-workspace-xs transition placeholder:text-slate-400 hover:border-slate-300 focus:border-brand/40 focus:outline-none focus:ring-2 focus:ring-brand/15";
 
-const labelClass =
+export const labelClass =
   "mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500";
 
 type ProfileForm = {
@@ -113,11 +114,48 @@ export function AccountProfilePage({
     [profile?.profile?.role],
   );
 
+  const loadProfile = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
+      else setRefreshing(true);
+
+      try {
+        const payload = await fetchAccountProfile();
+        const profileData = payload.data || null;
+        setProfile(profileData);
+        setForm({
+          first_name: profileData?.profile?.first_name || "",
+          last_name: profileData?.profile?.last_name || "",
+          email: profileData?.profile?.email || "",
+          phone: profileData?.profile?.phone || "",
+          address: profileData?.profile?.address || "",
+          avatar_url: profileData?.profile?.avatar_url || "",
+        });
+      } catch (err: any) {
+        const msg = err?.message || "";
+        if (
+          msg.includes("Unauthorized") ||
+          msg.includes("401") ||
+          msg.includes("403")
+        ) {
+          router.replace("/login");
+          return;
+        }
+        toast.error(msg || "Failed to load profile");
+        setProfile(null);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [router],
+  );
+
   useEffect(() => {
     if (!initialProfileData) {
       void loadProfile();
     }
-  }, [initialProfileData]);
+  }, [initialProfileData, loadProfile]);
 
   useEffect(() => {
     if (!initialProfileData) {
@@ -129,42 +167,12 @@ export function AccountProfilePage({
     setLoading(false);
   }, [initialProfileData]);
 
-  async function loadProfile(silent = false) {
-    if (!silent) setLoading(true);
-    else setRefreshing(true);
-
-    try {
-      const payload = await fetchAccountProfile();
-      const profileData = payload.data || null;
-      setProfile(profileData);
-      setForm({
-        first_name: profileData?.profile?.first_name || "",
-        last_name: profileData?.profile?.last_name || "",
-        email: profileData?.profile?.email || "",
-        phone: profileData?.profile?.phone || "",
-        address: profileData?.profile?.address || "",
-        avatar_url: profileData?.profile?.avatar_url || "",
-      });
-    } catch (err: any) {
-      const msg = err?.message || "";
-      if (msg.includes("Unauthorized") || msg.includes("401") || msg.includes("403")) {
-        router.replace("/login");
-        return;
-      }
-      toast.error(msg || "Failed to load profile");
-      setProfile(null);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }
-
   async function onSave() {
     setSaving(true);
     const t = toast.loading("Saving profile...");
 
     try {
-      const response = await fetch("/api/account/profile", {
+      const response = await adminApiFetch("/api/account/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -195,7 +203,7 @@ export function AccountProfilePage({
 
     try {
       const base64 = await readFileAsDataUrl(file);
-      const response = await fetch("/api/account/avatar", {
+      const response = await adminApiFetch("/api/account/avatar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

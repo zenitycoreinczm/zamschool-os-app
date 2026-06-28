@@ -4,16 +4,24 @@ import { requirePaymentsContext } from "@/lib/server-auth";
 import { requireFeatureAccess } from "@/lib/feature-permissions";
 import { parseBillingGenerateInput } from "@/lib/payment-input";
 import { supabaseAdmin } from "@/lib/supabase";
+import { auditDomainWrite } from "@/lib/audit-domain";
+import { getClientIp } from "@/lib/server-guards";
 
 export async function POST(request: NextRequest) {
   try {
     const access = await requirePaymentsContext(request);
     if (!access.ok) return access.response;
-    const perm = await requireFeatureAccess(access.context, "payments", "create");
+    const perm = await requireFeatureAccess(
+      access.context,
+      "payments",
+      "create",
+    );
     if (!perm.ok) return perm.response;
     const { schoolId, userId } = access.context;
 
-    const { month, fee_id: feeId } = parseBillingGenerateInput(await request.json());
+    const { month, fee_id: feeId } = parseBillingGenerateInput(
+      await request.json(),
+    );
 
     // Resolve fee_id if not provided
     let resolvedFeeId = feeId;
@@ -32,7 +40,7 @@ export async function POST(request: NextRequest) {
       if (feeError || !fee) {
         return NextResponse.json(
           { error: "No active monthly fee found for this school" },
-          { status: 404 }
+          { status: 404 },
         );
       }
       resolvedFeeId = fee.id;
@@ -48,7 +56,7 @@ export async function POST(request: NextRequest) {
       if (feeError || !fee) {
         return NextResponse.json(
           { error: "Fee not found or access denied" },
-          { status: 404 }
+          { status: 404 },
         );
       }
       feeAmount = fee.amount;
@@ -66,7 +74,7 @@ export async function POST(request: NextRequest) {
       console.error("Error fetching students:", studentsError);
       return NextResponse.json(
         { error: "Failed to fetch students" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -79,7 +87,7 @@ export async function POST(request: NextRequest) {
     const dueDate = new Date(
       billingDate.getFullYear(),
       billingDate.getMonth() + 1,
-      0
+      0,
     );
     const dueDateStr = dueDate.toISOString().split("T")[0];
 
@@ -105,25 +113,40 @@ export async function POST(request: NextRequest) {
       console.error("Error generating bills:", insertError);
       return NextResponse.json(
         { error: "Failed to generate bills" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
     const generated = inserted?.length || 0;
     const skipped = students.length - generated;
 
+    await auditDomainWrite({
+      schoolId,
+      userId,
+      action: "billing.generated",
+      entityType: "student_fees",
+      newData: {
+        month,
+        feeId: resolvedFeeId,
+        generated,
+        skipped,
+        studentCount: students.length,
+      },
+      ipAddress: getClientIp(request),
+    });
+
     return NextResponse.json({ generated, skipped, month });
   } catch (error) {
     if (error instanceof ZodError) {
       return NextResponse.json(
         { error: "Invalid request", details: error.issues },
-        { status: 400 }
+        { status: 400 },
       );
     }
     console.error("Error in billing POST:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

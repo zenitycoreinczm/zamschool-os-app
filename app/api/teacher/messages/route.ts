@@ -35,8 +35,10 @@ export async function GET(req: Request) {
   try {
     const access = await requireTeacherContext(req);
     if (!access.ok) return access.response;
+    const { schoolId } = access.context;
     const rate = await applyPlatformRateLimit({
       scope: "teacher-messages-read",
+      schoolId: schoolId ?? "",
       req,
       userId: access.context.userId,
       preset: "messagesRead",
@@ -75,8 +77,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No school linked to this account" }, { status: 403 });
     }
 
+    const { schoolId } = access.context;
     const rate = await applyPlatformRateLimit({
       scope: "teacher-messages-write",
+      schoolId: schoolId ?? "",
       req,
       userId: access.context.userId,
       preset: "messagesWrite",

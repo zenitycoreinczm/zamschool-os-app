@@ -71,7 +71,6 @@ class EmailService {
     try {
       const fromAddress =
         options.from || process.env.SMTP_FROM || this.config.auth.user;
-
       console.log(
         `[EmailService] Sending email — to=${options.to} subject="${options.subject}" from=${fromAddress}`,
       );

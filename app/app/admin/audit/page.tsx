@@ -5,6 +5,8 @@ import { Loader2, Search, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { adminApiJson } from "@/lib/admin-browser-api";
 import { getDisplayName } from "@/lib/profile-utils";
+import { Surface } from "@/components/workspace/Surface";
+import { cn } from "@/lib/utils";
 
 type AuditRow = {
   id: string;
@@ -36,8 +38,8 @@ export default function AdminAuditPage() {
             timestamp: String(row.created_at || row.timestamp || row.occurred_at || ""),
           }))
         );
-      } catch (err: any) {
-        toast.error(err?.message || "Failed to load audit logs");
+      } catch (err: unknown) {
+        toast.error(err instanceof Error ? err.message : "Failed to load audit logs");
         setRows([]);
       } finally {
         setLoading(false);
@@ -65,16 +67,22 @@ export default function AdminAuditPage() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-10 flex items-center justify-center gap-3">
-        <Loader2 className="w-5 h-5 animate-spin text-sky-600" />
-        <span className="text-sm text-slate-500">Loading audit logs...</span>
-      </div>
+      <Surface
+        variant="default"
+        role="status"
+        aria-live="polite"
+        className="flex items-center justify-center gap-3 p-10 text-sm text-slate-500"
+        as="div"
+      >
+        <Loader2 className="h-5 w-5 animate-spin text-sky-600" />
+        <span>Loading audit logs...</span>
+      </Surface>
     );
   }
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+      <Surface variant="default" className="rounded-[28px] p-5 md:p-6">
         <div className="flex flex-col gap-5 xl:flex-row xl:justify-between">
           <div className="space-y-4">
             <div>
@@ -90,10 +98,10 @@ export default function AdminAuditPage() {
             </div>
           </div>
 
-          <div className="w-full rounded-[24px] border border-slate-200 bg-slate-50 p-4 xl:max-w-xl">
+          <div className="w-full rounded-[24px] border border-workspace-border bg-slate-50 p-4 xl:max-w-xl">
             <label className="block">
               <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Search trail</span>
-              <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3">
+              <div className="flex items-center gap-2 rounded-2xl border border-workspace-border bg-white px-4 py-3">
                 <Search className="h-4 w-4 text-slate-400" />
                 <input
                   value={query}
@@ -104,13 +112,19 @@ export default function AdminAuditPage() {
               </div>
             </label>
 
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Filter by action">
               {(["all", "create", "update", "delete"] as const).map((item) => (
                 <button
                   key={item}
                   type="button"
                   onClick={() => setActionFilter(item)}
-                  className={`rounded-full px-3 py-2 text-xs font-semibold capitalize ${actionFilter === item ? "bg-sky-500 text-white" : "bg-white text-slate-600 ring-1 ring-slate-200"}`}
+                  aria-pressed={actionFilter === item}
+                  className={cn(
+                    "rounded-full px-3 py-2 text-xs font-semibold capitalize transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200",
+                    actionFilter === item
+                      ? "bg-sky-500 text-white"
+                      : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
+                  )}
                 >
                   {item}
                 </button>
@@ -118,10 +132,10 @@ export default function AdminAuditPage() {
             </div>
           </div>
         </div>
-      </section>
+      </Surface>
 
-      <section className="rounded-[28px] border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="border-b border-slate-200 px-5 py-4 md:px-6">
+      <Surface variant="default" className="rounded-[28px] overflow-hidden">
+        <div className="border-b border-workspace-border px-5 py-4 md:px-6">
           <div className="flex items-center gap-2 text-lg font-semibold text-slate-900">
             <Shield className="h-5 w-5 text-sky-600" /> Change log
           </div>
@@ -132,11 +146,11 @@ export default function AdminAuditPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-slate-600">
               <tr>
-                <th className="text-left px-4 py-3">Action</th>
-                <th className="text-left px-4 py-3">Entity</th>
-                <th className="text-left px-4 py-3">Actor</th>
-                <th className="text-left px-4 py-3">Summary</th>
-                <th className="text-left px-4 py-3">Timestamp</th>
+                <th scope="col" className="px-4 py-3 text-left">Action</th>
+                <th scope="col" className="px-4 py-3 text-left">Entity</th>
+                <th scope="col" className="px-4 py-3 text-left">Actor</th>
+                <th scope="col" className="px-4 py-3 text-left">Summary</th>
+                <th scope="col" className="px-4 py-3 text-left">Timestamp</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -148,8 +162,15 @@ export default function AdminAuditPage() {
                 visibleRows.map((row) => (
                   <tr key={row.id}>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${row.action === "create" ? "bg-emerald-100 text-emerald-700" : row.action === "delete" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"}`}>
-                        <Shield className="w-3 h-3" /> {row.action}
+                      <span className={cn(
+                        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
+                        row.action === "create"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : row.action === "delete"
+                            ? "bg-rose-100 text-rose-700"
+                            : "bg-amber-100 text-amber-700"
+                      )}>
+                        <Shield className="h-3 w-3" /> {row.action}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-slate-700">{row.entity}</td>
@@ -162,14 +183,14 @@ export default function AdminAuditPage() {
             </tbody>
           </table>
         </div>
-      </section>
+      </Surface>
     </div>
   );
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+    <div className="rounded-2xl border border-workspace-border bg-slate-50 px-4 py-3">
       <div className="text-xs uppercase tracking-[0.16em] text-slate-500">{label}</div>
       <div className="mt-2 text-lg font-semibold text-slate-900">{value}</div>
     </div>

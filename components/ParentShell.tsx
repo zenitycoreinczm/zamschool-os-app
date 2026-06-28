@@ -3,30 +3,18 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ProfileAvatarImage } from "@/components/ProfileAvatarImage";
+import { getDisplayInitials } from "@/lib/display-initials";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Bell,
-  BookOpen,
-  CalendarDays,
-  ClipboardList,
-  GraduationCap,
-  LayoutDashboard,
-  LogOut,
-  Megaphone,
-  MessageSquare,
-  Menu,
-  Settings,
-  User,
-  Users,
-  X,
-} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { LogOut, Menu, X } from "lucide-react";
 
 import { WorkspaceInboxCenter } from "@/components/inbox/WorkspaceInboxCenter";
 import { supabase } from "@/lib/supabase";
 import { performWorkspaceSignOut } from "@/lib/workspace-sign-out";
+import { useWorkspaceContext } from "@/components/WorkspaceContextProvider";
 import { WorkspaceNavMenu } from "@/components/workspace/WorkspaceNavMenu";
 import { WorkspaceGlobalSearch } from "@/components/workspace/WorkspaceGlobalSearch";
+import { MobileDock } from "@/components/workspace/MobileDock";
 import { navItemsToWorkspacePages } from "@/lib/workspace-search";
 import {
   buildParentPortalDock,
@@ -40,83 +28,46 @@ import { cn } from "@/lib/utils";
 const parentNavItems = flattenNavSections(parentPortalSections);
 const parentDock = buildParentPortalDock();
 
-export default function ParentShell({ children }: { children: React.ReactNode }) {
+export default function ParentShell({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const pathname = usePathname();
   const router = useRouter();
+  const { data: workspace, role, loading, error } = useWorkspaceContext();
   const [open, setOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
-  const [schoolName, setSchoolName] = useState("Your School");
-  const [yearTerm, setYearTerm] = useState("Academic Context");
-  const [displayName, setDisplayName] = useState("Parent");
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [ready, setReady] = useState(false);
-  const [unreadMessages, setUnreadMessages] = useState(0);
-  const [unreadNotifications, setUnreadNotifications] = useState(0);
-  const bootstrapped = useRef(false);
-  const workspacePageItems = useMemo(() => navItemsToWorkspacePages(parentNavItems), []);
+  const workspacePageItems = useMemo(
+    () => navItemsToWorkspacePages(parentNavItems),
+    [],
+  );
 
   useEffect(() => {
-    if (bootstrapped.current) return;
-    bootstrapped.current = true;
+    if (!workspace) {
+      return;
+    }
 
-    const loadProfile = async () => {
-      const sessionResult = await supabase.auth.getSession();
-      const user = sessionResult.data.session?.user;
-      const token = sessionResult.data.session?.access_token;
-      if (!user || !token) {
-        router.replace("/login?redirectTo=/parent");
-        return;
-      }
+    if (role !== "parent") {
+      router.replace("/login?error=parent_access_required");
+      return;
+    }
 
-      // Single consolidated fetch: workspace context + unread + role shell
-      const shellRes = await fetch("/api/account/shell", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!shellRes.ok) {
-        router.replace("/login?redirectTo=/parent");
-        return;
-      }
+    if (!workspace.emailConfirmed) {
+      router.replace("/verify-email");
+    }
+  }, [workspace, role, router]);
 
-      const shellBody = await shellRes.json();
-      const data = shellBody?.data;
-      if (!data) {
-        router.replace("/login?redirectTo=/parent");
-        return;
-      }
-
-      const role = String(data.role || "").toLowerCase();
-      if (role !== "parent") {
-        router.replace("/login?error=parent_access_required");
-        return;
-      }
-
-      if (!data.emailConfirmed) {
-        router.replace("/verify-email");
-        return;
-      }
-
-      setAvatarUrl(data.avatarUrl || null);
-      setDisplayName(data.displayName || "Parent");
-      if (data.schoolName) setSchoolName(data.schoolName);
-      if (data.yearTerm) setYearTerm(data.yearTerm);
-      if (data.unread) {
-        setUnreadMessages(Number(data.unread.messages || 0));
-        setUnreadNotifications(Number(data.unread.notifications || 0));
-      }
-
-      setReady(true);
-    };
-
-    void loadProfile();
-  }, [router]);
-
-  const activeSet = useMemo(() => {
-    const set = new Set<string>([pathname]);
-    if (pathname.startsWith("/parent/children")) set.add("/parent/children");
-    if (pathname.startsWith("/parent/attendance")) set.add("/parent/attendance");
-    if (pathname.startsWith("/parent/results")) set.add("/parent/results");
-    return set;
-  }, [pathname]);
+  const ready = !loading && Boolean(workspace) && role === "parent";
+  const schoolName = workspace?.schoolName || "Your School";
+  const yearTerm = workspace?.yearTerm || "Academic Context";
+  const displayName = workspace?.displayName || "Parent";
+  const avatarUrl = workspace?.avatarUrl || null;
+  const unreadSummary = {
+    messages: workspace?.unread?.messages ?? 0,
+    notifications: workspace?.unread?.notifications ?? 0,
+  };
+  const activeSet = useMemo(() => new Set([pathname]), [pathname]);
 
   const logout = async () => {
     if (signingOut) return;
@@ -125,7 +76,9 @@ export default function ParentShell({ children }: { children: React.ReactNode })
   };
 
   if (signingOut) {
-    return <WorkspaceLoader label="Signing out…" className="fixed inset-0 z-[200]" />;
+    return (
+      <WorkspaceLoader label="Signing out…" className="fixed inset-0 z-[200]" />
+    );
   }
 
   if (!ready) {
@@ -134,6 +87,12 @@ export default function ParentShell({ children }: { children: React.ReactNode })
 
   return (
     <div className={cn("flex h-screen overflow-hidden", ws.canvas)}>
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-workspace-md focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-slate-900 focus:shadow-workspace-md"
+      >
+        Skip to content
+      </a>
       {open && (
         <button
           className={cn("fixed inset-0 z-30 lg:hidden", ws.overlay)}
@@ -143,14 +102,17 @@ export default function ParentShell({ children }: { children: React.ReactNode })
       )}
 
       <aside
+        id="parent-sidebar"
+        role="navigation"
+        aria-label="Primary"
         className={cn(
           "fixed inset-y-0 left-0 z-40 w-64 border-r border-workspace-border bg-workspace-sidebar transition-transform duration-[var(--duration-workspace-normal)] lg:relative",
-          open ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+          open ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         )}
       >
         <div className="flex h-full flex-col">
           <div className="flex items-center justify-between border-b border-slate-200/80 px-4 py-5">
-            <Link href="/parent" className="flex items-center gap-3">
+            <Link href="/app/parent" className="flex items-center gap-3">
               <div className="h-10 w-10 overflow-hidden rounded-full bg-white shadow-sm">
                 <Image
                   src="/icon.png"
@@ -162,11 +124,18 @@ export default function ParentShell({ children }: { children: React.ReactNode })
                 />
               </div>
               <div>
-                <p className="font-semibold leading-tight text-slate-900">ZamSchool OS</p>
-                <p className="text-xs leading-tight text-slate-500">Parent Portal</p>
+                <p className="font-semibold leading-tight text-slate-900">
+                  ZamSchool OS
+                </p>
+                <p className="text-xs leading-tight text-slate-500">
+                  Parent Portal
+                </p>
               </div>
             </Link>
-            <button className="p-2 text-slate-500 lg:hidden" onClick={() => setOpen(false)}>
+            <button
+              className="p-2 text-slate-500 lg:hidden"
+              onClick={() => setOpen(false)}
+            >
               <X className="h-5 w-5" />
             </button>
           </div>
@@ -193,13 +162,26 @@ export default function ParentShell({ children }: { children: React.ReactNode })
       </aside>
 
       <div className="zamschool-workspace-shell__main flex min-w-0 flex-1 flex-col">
-        <header className={cn(ws.header, "flex items-center justify-between gap-4 border-b border-workspace-border/60 px-4 py-3.5 md:px-6")}>
+        <header
+          className={cn(
+            ws.header,
+            "flex items-center justify-between gap-4 border-b border-workspace-border/60 px-4 py-3.5 md:px-6",
+          )}
+        >
           <div className="flex min-w-0 items-center gap-3">
-            <button className="-ml-2 p-2 text-slate-600 lg:hidden" onClick={() => setOpen(true)}>
+            <button
+              className="-ml-2 p-2 text-slate-600 lg:hidden"
+              onClick={() => setOpen(true)}
+              aria-expanded={open}
+              aria-controls="parent-sidebar"
+              aria-label="Open menu"
+            >
               <Menu className="h-5 w-5" />
             </button>
             <div className="hidden min-w-0 lg:block">
-              <p className="truncate font-semibold text-slate-900">{schoolName}</p>
+              <p className="truncate font-semibold text-slate-900">
+                {schoolName}
+              </p>
               <p className="truncate text-xs text-slate-500">{yearTerm}</p>
             </div>
           </div>
@@ -212,63 +194,68 @@ export default function ParentShell({ children }: { children: React.ReactNode })
 
           <div className="flex items-center gap-3">
             <WorkspaceInboxCenter
-              messagesHref="/parent/messages"
-              notificationsHref="/parent/notifications"
-              initialUnread={{
-                messages: unreadMessages,
-                notifications: unreadNotifications,
-              }}
+              messagesHref="/app/parent/messages"
+              notificationsHref="/app/parent/notifications"
+              initialUnread={unreadSummary}
             />
             <div className="hidden items-center gap-3 pl-2 sm:flex">
               <div className="text-right leading-tight">
-                <p className="text-sm font-semibold text-slate-800">{displayName}</p>
+                <p className="text-sm font-semibold text-slate-800">
+                  {displayName}
+                </p>
                 <p className="text-[11px] text-slate-400">Parent</p>
               </div>
               <Link
-                href="/parent/profile"
+                href="/app/parent/profile"
                 className="relative grid h-10 w-10 place-items-center overflow-hidden rounded-full border border-teal-200 bg-teal-600 text-sm font-semibold text-white shadow-sm"
               >
-                {avatarUrl ? (
-                  <ProfileAvatarImage
-                    src={avatarUrl}
-                    alt={displayName}
-                    width={40}
-                    height={40}
-                    className="h-full w-full object-cover"
-                    fallback={displayName.slice(0, 1).toUpperCase()}
-                  />
-                ) : (
-                  displayName.slice(0, 1).toUpperCase()
-                )}
+                {(() => {
+                  const initials = getDisplayInitials({
+                    firstName: workspace?.firstName,
+                    lastName: workspace?.lastName,
+                    displayName,
+                    email: workspace?.email,
+                  });
+                  return avatarUrl ? (
+                    <ProfileAvatarImage
+                      src={avatarUrl}
+                      alt={displayName}
+                      width={40}
+                      height={40}
+                      className="h-full w-full object-cover"
+                      fallback={initials}
+                    />
+                  ) : (
+                    initials
+                  );
+                })()}
               </Link>
             </div>
           </div>
         </header>
 
-        <main className={cn(ws.mainScroll, "flex-1")}>
-          <div className="relative z-0 zamschool-workspace-main-inner animate-enter-up space-y-5 pb-24 lg:pb-6">{children}</div>
+        {error ? (
+          <div
+            role="alert"
+            className="mx-4 mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 md:mx-6"
+          >
+            {error}
+          </div>
+        ) : null}
+
+        <main id="main" className={cn(ws.mainScroll, "flex-1")}>
+          <div className="relative z-0 zamschool-workspace-main-inner animate-enter-up space-y-5 pb-24 lg:pb-6">
+            {children}
+          </div>
         </main>
 
-        <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white px-2 py-2 lg:hidden">
-          <div className="grid grid-cols-5 gap-1">
-            {parentDock.map((item) => {
-              const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setOpen(false)}
-                  className={`flex flex-col items-center justify-center rounded-lg py-2 ${
-                    active ? "bg-teal-50 text-teal-700" : "text-slate-500"
-                  }`}
-                >
-                  <item.icon className="h-4.5 w-4.5" />
-                  <span className="mt-1 text-[10px] font-medium">{item.label}</span>
-                </Link>
-              );
-            })}
-          </div>
-        </nav>
+        <MobileDock
+          pathname={pathname}
+          items={parentDock}
+          onClose={() => setOpen(false)}
+          activeAccent="teal"
+          columns={5}
+        />
       </div>
     </div>
   );

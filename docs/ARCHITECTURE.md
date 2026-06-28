@@ -54,3 +54,14 @@ For the threat model, RLS policy, service-role audit, MFA setup, and rate-limit 
 - **Cloudflare** — DNS, cache rules, R2 backing store, image transformations.
 
 You should not put business logic in the worker. It is a read cache with edge headers, not an API surface.
+
+## Workspace bootstrap providers
+
+Two React context providers coexist for the authenticated workspace. They are deliberately not merged; the boundary is part of the architectural contract.
+
+- `components/WorkspaceContextProvider.tsx` — the canonical workspace context consumed by `AdminShell`, `ParentShell`, `StudentShell`, and `PaymentsShell`. Exposes `workspace` (school context, role, year/term, profile basics, `unread`), `loading`, `error`, and the polling lifecycle.
+- `components/TeacherWorkspaceProvider.tsx` — wraps children of `TeacherShell` and adds teacher-specific data: `account` (profile + first-login + teacher record), `stats` (lessons / students / completed / pending), `workload` (unread messages + unread notifications + pending grades + draft results + upcoming events), and a `refresh()` that invalidates the cached shell and bootstrap. It reads the same `/api/account/shell` payload that `WorkspaceContextProvider` does but layers the teacher-specific `/api/account/teacher/bootstrap` payload on top.
+
+**Why two providers.** `TeacherWorkspaceStats` and `TeacherWorkloadSummary` do not exist in the other role contexts. Folding them into the canonical provider would force every shell to carry teacher-specific state they don't use. The current shape keeps each shell's surface small and lets the teacher shell publish its own `refresh()` (used by mutation flows that invalidate teacher stats, e.g. completing attendance, posting a result). New role shells (registrar, hr-admin, etc.) should add their own thin provider that wraps `useWorkspaceContext()` for shared fields and layers role-specific data, mirroring `TeacherWorkspaceProvider`.
+
+**Anti-pattern.** Avoid per-shell direct fetches of `/api/account/shell` with local `useState` for hydration data. New role shells should not regress to that pattern.

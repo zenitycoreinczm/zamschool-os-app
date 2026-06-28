@@ -14,6 +14,7 @@ export type AppWorkspaceRole =
   | "hr_admin"
   | "ict_admin"
   | "discipline_admin"
+  | "registrar"
   | "super_admin"
   | null;
 

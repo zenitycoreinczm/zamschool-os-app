@@ -229,7 +229,6 @@ export function useDebouncedCallback<T extends Fn>(
       ms,
       options
     ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [ms, JSON.stringify(options), ...deps]
   );
 
@@ -272,7 +271,6 @@ export function useThrottledCallback<T extends Fn>(
       ms,
       options
     ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [ms, JSON.stringify(options), ...deps]
   );
 

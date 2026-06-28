@@ -1,5 +1,5 @@
-const KV_REST_API_URL = process.env.KV_REST_API_URL || '';
-const KV_REST_API_TOKEN = process.env.KV_REST_API_TOKEN || '';
+const KV_REST_API_URL = (process.env.KV_REST_API_URL || "").trim();
+const KV_REST_API_TOKEN = (process.env.KV_REST_API_TOKEN || "").trim();
 
 type RateLimitConfig = {
   maxRequests: number;
@@ -13,15 +13,63 @@ const LIMITS: Record<string, RateLimitConfig> = {
   file_upload: { maxRequests: 20, windowMs: 60 * 1000 },
 };
 
+/**
+ * Detects KV env misconfiguration that would silently swallow errors.
+ *
+ * Cloudflare Workers KV REST URL must look like:
+ *   https://api.cloudflare.com/client/v4/accounts/<acc>/storage/kv/<namespace>
+ *
+ * It must NOT be the R2 S3 endpoint, which has the form
+ *   https://<account>.r2.cloudflarestorage.com
+ *   https://<namespace>.kv.cloudflarestorage.com
+ * Both resolve to an S3-style API that 404s (or DNS-fails if the namespace
+ * doesn't exist) on every KV call.
+ *
+ * When we detect this, we treat KV as unconfigured so rate-limit() falls through
+ * to the in-memory/Redis fallback instead of emitting a noisy `fetch failed`
+ * for every request.
+ */
+const R2_S3_HOST_PATTERN = /\.(r2|kv)\.cloudflarestorage\.com$/i;
+let warnedKvEndpointFormat = false;
+
+function looksLikeValidKvRestUrl(rawUrl: string): boolean {
+  if (!rawUrl) return false;
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== "https:") return false;
+    if (R2_S3_HOST_PATTERN.test(parsed.hostname)) return false;
+    // Workers KV REST API always goes through api.cloudflare.com.
+    return parsed.hostname === "api.cloudflare.com";
+  } catch {
+    return false;
+  }
+}
+
 export function isKvConfigured(): boolean {
-  return Boolean(KV_REST_API_URL && KV_REST_API_TOKEN);
+  if (!KV_REST_API_URL || !KV_REST_API_TOKEN) return false;
+  if (!looksLikeValidKvRestUrl(KV_REST_API_URL)) {
+    if (!warnedKvEndpointFormat && process.env.NODE_ENV !== "test") {
+      warnedKvEndpointFormat = true;
+      console.warn(
+        "[KV] KV_REST_API_URL is not a Workers KV REST endpoint " +
+          "(expected https://api.cloudflare.com/client/v4/accounts/<acc>/storage/kv/<namespace>). " +
+          "If you meant R2 storage, point at the WORKERS KV REST endpoint instead. " +
+          "Falling back to Redis/in-memory rate limit on every call.",
+      );
+    }
+    return false;
+  }
+  return true;
 }
 
 async function kvGet(key: string): Promise<string | null> {
   try {
-    const res = await fetch(`${KV_REST_API_URL}/values/${encodeURIComponent(key)}`, {
-      headers: { Authorization: `Bearer ${KV_REST_API_TOKEN}` },
-    });
+    const res = await fetch(
+      `${KV_REST_API_URL}/values/${encodeURIComponent(key)}`,
+      {
+        headers: { Authorization: `Bearer ${KV_REST_API_TOKEN}` },
+      },
+    );
     if (!res.ok) return null;
     return res.text();
   } catch {
@@ -29,17 +77,26 @@ async function kvGet(key: string): Promise<string | null> {
   }
 }
 
-async function kvPut(key: string, value: string, expirationTtl?: number): Promise<boolean> {
+async function kvPut(
+  key: string,
+  value: string,
+  expirationTtl?: number,
+): Promise<boolean> {
   try {
-    const headers: Record<string, string> = { Authorization: `Bearer ${KV_REST_API_TOKEN}` };
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${KV_REST_API_TOKEN}`,
+    };
     if (expirationTtl) {
-      headers['Expiration-TTL'] = String(expirationTtl);
+      headers["Expiration-TTL"] = String(expirationTtl);
     }
-    const res = await fetch(`${KV_REST_API_URL}/values/${encodeURIComponent(key)}`, {
-      method: 'PUT',
-      headers,
-      body: value,
-    });
+    const res = await fetch(
+      `${KV_REST_API_URL}/values/${encodeURIComponent(key)}`,
+      {
+        method: "PUT",
+        headers,
+        body: value,
+      },
+    );
     return res.ok;
   } catch {
     return false;
@@ -54,7 +111,7 @@ export type RateLimitResult = {
 
 export async function checkKvRateLimit(
   identifier: string,
-  category: keyof typeof LIMITS
+  category: keyof typeof LIMITS,
 ): Promise<RateLimitResult> {
   if (!isKvConfigured()) {
     return { allowed: true, remaining: 999, reset: 0 };
@@ -97,7 +154,7 @@ export async function checkKvRateLimit(
 export async function checkKvBurstLimit(
   userId: string,
   operation: string,
-  maxConcurrent: number = 3
+  maxConcurrent: number = 3,
 ): Promise<{ allowed: boolean }> {
   if (!isKvConfigured()) {
     return { allowed: true };
@@ -120,7 +177,10 @@ export async function checkKvBurstLimit(
   }
 }
 
-export async function releaseKvBurstLimit(userId: string, operation: string): Promise<void> {
+export async function releaseKvBurstLimit(
+  userId: string,
+  operation: string,
+): Promise<void> {
   if (!isKvConfigured()) return;
 
   const kvKey = `burst:${operation}:${userId}`;

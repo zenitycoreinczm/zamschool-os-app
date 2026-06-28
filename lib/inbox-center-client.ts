@@ -2,7 +2,6 @@
 
 import { accountApiJson } from "@/lib/account-portal-api";
 import { adminApiJson } from "@/lib/admin-browser-api";
-import { getClientAccessToken } from "@/lib/supabase-auth-client";
 
 export type InboxApiMode = "account" | "admin" | "teacher";
 
@@ -31,18 +30,14 @@ export type InboxNotificationPreview = {
   created_at?: string;
 };
 
-async function teacherApiJson<T = unknown>(input: string, init: RequestInit = {}) {
+async function teacherApiJson<T = unknown>(
+  input: string,
+  init: RequestInit = {},
+) {
   const headers = new Headers(init.headers || {});
   if (!headers.has("Content-Type") && init.body) {
     headers.set("Content-Type", "application/json");
   }
-  if (!headers.has("Authorization")) {
-    const accessToken = await getClientAccessToken();
-    if (accessToken) {
-      headers.set("Authorization", `Bearer ${accessToken}`);
-    }
-  }
-
   const response = await fetch(input, {
     ...init,
     headers,
@@ -50,13 +45,14 @@ async function teacherApiJson<T = unknown>(input: string, init: RequestInit = {}
     credentials: "same-origin",
   });
   const parsedBody = await response.json().catch(() => null);
-  const body = typeof parsedBody === "object" && parsedBody !== null ? parsedBody : {};
+  const body =
+    typeof parsedBody === "object" && parsedBody !== null ? parsedBody : {};
 
   if (!response.ok) {
     throw new Error(
       (body as { error?: string }).error ||
         response.statusText ||
-        `Request failed with status ${response.status}`
+        `Request failed with status ${response.status}`,
     );
   }
 
@@ -75,18 +71,24 @@ function apiJson<T>(mode: InboxApiMode, input: string, init?: RequestInit) {
 
 // In-flight promise deduplication — simultaneous calls share one request.
 let unreadSummaryInFlight: Promise<UnreadSummary> | null = null;
-let inboxPreviewInFlight: Promise<{ messages: InboxMessagePreview[]; notifications: InboxNotificationPreview[] }> | null = null;
+let inboxPreviewInFlight: Promise<{
+  messages: InboxMessagePreview[];
+  notifications: InboxNotificationPreview[];
+}> | null = null;
 
 // TTL cache for unread summary (badge counts change infrequently)
 const UNREAD_SUMMARY_TTL_MS = 30_000;
-let unreadSummaryCache: { expiresAt: number; data: UnreadSummary } | null = null;
+let unreadSummaryCache: { expiresAt: number; data: UnreadSummary } | null =
+  null;
 
 export function invalidateUnreadSummaryCache() {
   unreadSummaryCache = null;
   unreadSummaryInFlight = null;
 }
 
-export async function fetchUnreadSummary(mode: InboxApiMode = "account"): Promise<UnreadSummary> {
+export async function fetchUnreadSummary(
+  mode: InboxApiMode = "account",
+): Promise<UnreadSummary> {
   // Return cached value if fresh
   if (unreadSummaryCache && Date.now() < unreadSummaryCache.expiresAt) {
     return unreadSummaryCache.data;
@@ -95,18 +97,23 @@ export async function fetchUnreadSummary(mode: InboxApiMode = "account"): Promis
   // Share in-flight request
   if (unreadSummaryInFlight) return unreadSummaryInFlight;
 
-  unreadSummaryInFlight = apiJson<{ data?: { messages?: number; notifications?: number } }>(
-    mode,
-    "/api/account/unread-summary"
-  ).then((payload) => ({
-    messages: Number(payload?.data?.messages || 0),
-    notifications: Number(payload?.data?.notifications || 0),
-  })).then((data) => {
-    unreadSummaryCache = { expiresAt: Date.now() + UNREAD_SUMMARY_TTL_MS, data };
-    return data;
-  }).finally(() => {
-    unreadSummaryInFlight = null;
-  });
+  unreadSummaryInFlight = apiJson<{
+    data?: { messages?: number; notifications?: number };
+  }>(mode, "/api/account/unread-summary")
+    .then((payload) => ({
+      messages: Number(payload?.data?.messages || 0),
+      notifications: Number(payload?.data?.notifications || 0),
+    }))
+    .then((data) => {
+      unreadSummaryCache = {
+        expiresAt: Date.now() + UNREAD_SUMMARY_TTL_MS,
+        data,
+      };
+      return data;
+    })
+    .finally(() => {
+      unreadSummaryInFlight = null;
+    });
 
   return unreadSummaryInFlight;
 }
@@ -115,7 +122,10 @@ export async function fetchUnreadSummary(mode: InboxApiMode = "account"): Promis
 const INBOX_PREVIEW_TTL_MS = 30_000;
 let inboxPreviewCache: {
   expiresAt: number;
-  data: { messages: InboxMessagePreview[]; notifications: InboxNotificationPreview[] };
+  data: {
+    messages: InboxMessagePreview[];
+    notifications: InboxNotificationPreview[];
+  };
 } | null = null;
 
 export function invalidateInboxPreviewCache() {
@@ -123,7 +133,10 @@ export function invalidateInboxPreviewCache() {
   inboxPreviewInFlight = null;
 }
 
-export async function fetchInboxPreview(mode: InboxApiMode = "account", limit = 8) {
+export async function fetchInboxPreview(
+  mode: InboxApiMode = "account",
+  limit = 8,
+) {
   // Return cached value if fresh
   if (inboxPreviewCache && Date.now() < inboxPreviewCache.expiresAt) {
     return inboxPreviewCache.data;
@@ -137,24 +150,37 @@ export async function fetchInboxPreview(mode: InboxApiMode = "account", limit = 
       messages?: InboxMessagePreview[];
       notifications?: InboxNotificationPreview[];
     };
-  }>(mode, `/api/account/inbox-preview?limit=${limit}`).then((payload) => ({
-    messages: Array.isArray(payload?.data?.messages) ? payload.data.messages : [],
-    notifications: Array.isArray(payload?.data?.notifications) ? payload.data.notifications : [],
-  })).then((data) => {
-    inboxPreviewCache = { expiresAt: Date.now() + INBOX_PREVIEW_TTL_MS, data };
-    return data;
-  }).finally(() => {
-    inboxPreviewInFlight = null;
-  });
+  }>(mode, `/api/account/inbox-preview?limit=${limit}`)
+    .then((payload) => ({
+      messages: Array.isArray(payload?.data?.messages)
+        ? payload.data.messages
+        : [],
+      notifications: Array.isArray(payload?.data?.notifications)
+        ? payload.data.notifications
+        : [],
+    }))
+    .then((data) => {
+      inboxPreviewCache = {
+        expiresAt: Date.now() + INBOX_PREVIEW_TTL_MS,
+        data,
+      };
+      return data;
+    })
+    .finally(() => {
+      inboxPreviewInFlight = null;
+    });
 
   return inboxPreviewInFlight;
 }
 
 export async function markMessageRead(mode: InboxApiMode, messageId: string) {
   if (mode === "admin") {
-    await adminApiJson(`/api/admin/messages?id=${encodeURIComponent(messageId)}`, {
-      method: "PUT",
-    });
+    await adminApiJson(
+      `/api/admin/messages?id=${encodeURIComponent(messageId)}`,
+      {
+        method: "PUT",
+      },
+    );
     invalidateUnreadSummaryCache();
     invalidateInboxPreviewCache();
     return;
@@ -178,26 +204,35 @@ export async function markMessageRead(mode: InboxApiMode, messageId: string) {
   invalidateInboxPreviewCache();
 }
 
-export async function markNotificationRead(mode: InboxApiMode, notificationId: string) {
+export async function markNotificationRead(
+  mode: InboxApiMode,
+  notificationId: string,
+) {
   if (mode === "teacher") {
-    await teacherApiJson(`/api/teacher/notifications?id=${encodeURIComponent(notificationId)}`, {
-      method: "PUT",
-    });
+    await teacherApiJson(
+      `/api/teacher/notifications?id=${encodeURIComponent(notificationId)}`,
+      {
+        method: "PUT",
+      },
+    );
     invalidateUnreadSummaryCache();
     invalidateInboxPreviewCache();
     return;
   }
 
-  await accountApiJson(`/api/account/notifications?id=${encodeURIComponent(notificationId)}`, {
-    method: "PUT",
-  });
+  await accountApiJson(
+    `/api/account/notifications?id=${encodeURIComponent(notificationId)}`,
+    {
+      method: "PUT",
+    },
+  );
   invalidateUnreadSummaryCache();
   invalidateInboxPreviewCache();
 }
 
 export async function sendInboxReply(
   mode: InboxApiMode,
-  input: { recipientId: string; subject: string; body: string }
+  input: { recipientId: string; subject: string; body: string },
 ) {
   if (mode === "admin") {
     await adminApiJson("/api/admin/messages", {

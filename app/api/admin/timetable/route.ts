@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { z } from "zod";
-import { applyRateLimit, getClientIp, parseJsonWithSchema, safeErrorMessage } from "@/lib/server-guards";
-import { requireAdminContext } from "@/lib/server-auth";
+import {
+  applyRateLimit,
+  getClientIp,
+  parseJsonWithSchema,
+  safeErrorMessage,
+} from "@/lib/server-guards";
+import { requireAdminContext, requireActorContext } from "@/lib/server-auth";
 import { requireFeatureAccess } from "@/lib/feature-permissions";
+import { createAuditLog } from "@/lib/audit-log";
+import { auditDomainWrite } from "@/lib/audit-domain";
 import {
   buildTeacherConflictIds,
   findLessonSchedulingConflict,
@@ -43,7 +50,10 @@ export async function GET(req: Request) {
     if (!access.ok) return access.response;
     const { schoolId } = access.context;
     if (!schoolId) {
-      return NextResponse.json({ error: "No school linked to this account" }, { status: 403 });
+      return NextResponse.json(
+        { error: "No school linked to this account" },
+        { status: 403 },
+      );
     }
     const { searchParams } = new URL(req.url);
     const classId = searchParams.get("classId");
@@ -52,17 +62,35 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to fetch timetable") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to fetch timetable") },
+      { status: 500 },
+    );
   }
 }
 
 export async function POST(req: Request) {
   try {
-    const access = await requireAdminContext(req);
+    const access = await requireActorContext(
+      {
+        allowedRoles: ["ACADEMIC_ADMIN", "ADMIN", "SUPER_ADMIN"],
+        requireSchool: true,
+      },
+      req,
+    );
     if (!access.ok) return access.response;
+    const perm = await requireFeatureAccess(
+      access.context,
+      "timetable",
+      "create",
+    );
+    if (!perm.ok) return perm.response;
     const { schoolId } = access.context;
     if (!schoolId) {
-      return NextResponse.json({ error: "No school linked to this account" }, { status: 403 });
+      return NextResponse.json(
+        { error: "No school linked to this account" },
+        { status: 403 },
+      );
     }
     const ip = getClientIp(req);
     const rate = await applyRateLimit({
@@ -73,7 +101,7 @@ export async function POST(req: Request) {
     if (!rate.allowed) {
       return NextResponse.json(
         { error: "Too many requests. Please try again shortly." },
-        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } }
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
       );
     }
 
@@ -88,7 +116,10 @@ export async function POST(req: Request) {
       endTime: body.endTime,
     });
     if (!assignment.ok) {
-      return NextResponse.json({ error: assignment.error }, { status: assignment.status });
+      return NextResponse.json(
+        { error: assignment.error },
+        { status: assignment.status },
+      );
     }
 
     const payload: Record<string, any> = {
@@ -105,19 +136,47 @@ export async function POST(req: Request) {
 
     const data = await safeInsertLesson(payload);
 
+    await createAuditLog({
+      schoolId,
+      userId: access.context.userId,
+      action: "timetable.lesson_created",
+      entityType: "lesson",
+      entityId: data?.id,
+      newData: payload,
+      ipAddress: ip,
+    });
+
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to create lesson") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to create lesson") },
+      { status: 500 },
+    );
   }
 }
 
 export async function PUT(req: Request) {
   try {
-    const access = await requireAdminContext(req);
+    const access = await requireActorContext(
+      {
+        allowedRoles: ["ACADEMIC_ADMIN", "ADMIN", "SUPER_ADMIN"],
+        requireSchool: true,
+      },
+      req,
+    );
     if (!access.ok) return access.response;
+    const perm = await requireFeatureAccess(
+      access.context,
+      "timetable",
+      "update",
+    );
+    if (!perm.ok) return perm.response;
     const { schoolId } = access.context;
     if (!schoolId) {
-      return NextResponse.json({ error: "No school linked to this account" }, { status: 403 });
+      return NextResponse.json(
+        { error: "No school linked to this account" },
+        { status: 403 },
+      );
     }
     const ip = getClientIp(req);
     const rate = await applyRateLimit({
@@ -128,14 +187,17 @@ export async function PUT(req: Request) {
     if (!rate.allowed) {
       return NextResponse.json(
         { error: "Too many requests. Please try again shortly." },
-        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } }
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
       );
     }
 
     const body = await parseJsonWithSchema(req, updateLessonSchema);
     const currentLesson = await fetchLessonRecord(body.id, schoolId);
     if (!currentLesson) {
-      return NextResponse.json({ error: "Lesson not found in this school" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Lesson not found in this school" },
+        { status: 404 },
+      );
     }
 
     const mergedLesson = {
@@ -158,7 +220,10 @@ export async function PUT(req: Request) {
       endTime: mergedLesson.endTime,
     });
     if (!assignment.ok) {
-      return NextResponse.json({ error: assignment.error }, { status: assignment.status });
+      return NextResponse.json(
+        { error: assignment.error },
+        { status: assignment.status },
+      );
     }
 
     const payload: Record<string, any> = {};
@@ -173,25 +238,56 @@ export async function PUT(req: Request) {
 
     const data = await safeUpdateLesson(body.id, schoolId, payload);
 
+    await createAuditLog({
+      schoolId,
+      userId: access.context.userId,
+      action: "timetable.lesson_updated",
+      entityType: "lesson",
+      entityId: body.id,
+      newData: payload,
+      ipAddress: ip,
+    });
+
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to update lesson") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to update lesson") },
+      { status: 500 },
+    );
   }
 }
 
 export async function DELETE(req: Request) {
   try {
-    const access = await requireAdminContext(req);
+    const access = await requireActorContext(
+      {
+        allowedRoles: ["ACADEMIC_ADMIN", "ADMIN", "SUPER_ADMIN"],
+        requireSchool: true,
+      },
+      req,
+    );
     if (!access.ok) return access.response;
+    const perm = await requireFeatureAccess(
+      access.context,
+      "timetable",
+      "delete",
+    );
+    if (!perm.ok) return perm.response;
     const { schoolId } = access.context;
     if (!schoolId) {
-      return NextResponse.json({ error: "No school linked to this account" }, { status: 403 });
+      return NextResponse.json(
+        { error: "No school linked to this account" },
+        { status: 403 },
+      );
     }
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 
     if (!id) {
-      return NextResponse.json({ error: "Lesson ID is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Lesson ID is required" },
+        { status: 400 },
+      );
     }
 
     const { error } = await supabaseAdmin
@@ -202,9 +298,22 @@ export async function DELETE(req: Request) {
 
     if (error) throw error;
 
+    const ip = getClientIp(req);
+    await auditDomainWrite({
+      schoolId,
+      userId: access.context.userId,
+      action: "timetable.deleted",
+      entityType: "lesson",
+      entityId: id,
+      ipAddress: ip,
+    });
+
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to delete lesson") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to delete lesson") },
+      { status: 500 },
+    );
   }
 }
 
@@ -215,11 +324,13 @@ async function fetchTimetableRows(input: {
 }) {
   let modernQuery = supabaseAdmin
     .from("lessons")
-    .select(`
+    .select(
+      `
       *,
       subjects(name, code),
       classes(name, grades(name, level))
-    `)
+    `,
+    )
     .eq("school_id", input.schoolId);
 
   if (input.classId) {
@@ -244,11 +355,13 @@ async function fetchTimetableRows(input: {
 
   let legacyQuery = supabaseAdmin
     .from("lessons")
-    .select(`
+    .select(
+      `
       *,
       subjects(name, code),
       classes(name, grade_level)
-    `)
+    `,
+    )
     .eq("school_id", input.schoolId);
 
   if (input.classId) {
@@ -268,7 +381,9 @@ async function fetchTimetableRows(input: {
   }
 
   const rows = (legacy.data || []).map((row: any) => {
-    const classRow = Array.isArray(row?.classes) ? row.classes[0] : row?.classes;
+    const classRow = Array.isArray(row?.classes)
+      ? row.classes[0]
+      : row?.classes;
     const gradeLevel = classRow?.grade_level;
 
     return {
@@ -310,7 +425,11 @@ async function safeInsertLesson(payload: Record<string, any>) {
   throw new Error("Failed to insert lesson");
 }
 
-async function safeUpdateLesson(id: string, schoolId: string, payload: Record<string, any>) {
+async function safeUpdateLesson(
+  id: string,
+  schoolId: string,
+  payload: Record<string, any>,
+) {
   let working = { ...payload };
   for (let i = 0; i < 10; i++) {
     const { data, error } = await supabaseAdmin
@@ -337,7 +456,12 @@ function extractMissingColumn(message?: string) {
   return match?.[1] || null;
 }
 
-function shouldUseLegacyClassSchema(error: { code?: string | null; message?: string | null; details?: string | null } | null | undefined) {
+function shouldUseLegacyClassSchema(
+  error:
+    | { code?: string | null; message?: string | null; details?: string | null }
+    | null
+    | undefined,
+) {
   const message = String(error?.message || "");
   const details = String(error?.details || "");
   return (
@@ -356,19 +480,25 @@ async function attachTeacherProfiles(rows: any[], schoolId: string) {
     new Set(
       (rows || [])
         .map((row) => String(row?.teacher_id || "").trim())
-        .filter(Boolean)
-    )
+        .filter(Boolean),
+    ),
   );
 
   if (teacherIds.length === 0) {
     return hydrateTimetableRows(rows, {});
   }
 
-  const teacherProfileLookup = await fetchTeacherProfileLookup(schoolId, teacherIds);
+  const teacherProfileLookup = await fetchTeacherProfileLookup(
+    schoolId,
+    teacherIds,
+  );
   return hydrateTimetableRows(rows, teacherProfileLookup);
 }
 
-async function fetchTeacherProfileLookup(schoolId: string, teacherIds: string[]) {
+async function fetchTeacherProfileLookup(
+  schoolId: string,
+  teacherIds: string[],
+) {
   const [directProfilesResult, teacherRowsResult] = await Promise.all([
     supabaseAdmin
       .from("profiles")
@@ -381,21 +511,28 @@ async function fetchTeacherProfileLookup(schoolId: string, teacherIds: string[])
   ]);
 
   if (directProfilesResult.error) throw directProfilesResult.error;
-  if (teacherRowsResult.error && !isMissingRelationError(teacherRowsResult.error)) {
+  if (
+    teacherRowsResult.error &&
+    !isMissingRelationError(teacherRowsResult.error)
+  ) {
     throw teacherRowsResult.error;
   }
 
   const teacherRows = (teacherRowsResult.data || []).filter(
-    (row: any) => teacherIds.includes(String(row?.id || "")) || teacherIds.includes(String(row?.profile_id || ""))
+    (row: any) =>
+      teacherIds.includes(String(row?.id || "")) ||
+      teacherIds.includes(String(row?.profile_id || "")),
   );
 
-  const knownProfileIds = new Set((directProfilesResult.data || []).map((profile: any) => String(profile.id)));
+  const knownProfileIds = new Set(
+    (directProfilesResult.data || []).map((profile: any) => String(profile.id)),
+  );
   const missingProfileIds = Array.from(
     new Set(
       teacherRows
         .map((row: any) => String(row?.profile_id || "").trim())
-        .filter((profileId) => profileId && !knownProfileIds.has(profileId))
-    )
+        .filter((profileId) => profileId && !knownProfileIds.has(profileId)),
+    ),
   );
 
   let linkedProfiles: any[] = [];
@@ -486,7 +623,9 @@ async function validateLessonMutation(input: {
 async function fetchLessonRecord(id: string, schoolId: string) {
   const { data, error } = await supabaseAdmin
     .from("lessons")
-    .select("id, school_id, class_id, subject_id, teacher_id, day_of_week, start_time, end_time")
+    .select(
+      "id, school_id, class_id, subject_id, teacher_id, day_of_week, start_time, end_time",
+    )
     .eq("id", id)
     .eq("school_id", schoolId)
     .maybeSingle();
@@ -495,7 +634,11 @@ async function fetchLessonRecord(id: string, schoolId: string) {
   return data;
 }
 
-async function fetchSchoolOwnedRow(table: "classes" | "subjects", id: string, schoolId: string) {
+async function fetchSchoolOwnedRow(
+  table: "classes" | "subjects",
+  id: string,
+  schoolId: string,
+) {
   const { data, error } = await supabaseAdmin
     .from(table)
     .select("id, school_id")
@@ -523,7 +666,9 @@ async function fetchLessonsForConflictCheck(input: {
 
   const { data, error } = await supabaseAdmin
     .from("lessons")
-    .select("id, class_id, teacher_id, subject_id, day_of_week, start_time, end_time")
+    .select(
+      "id, class_id, teacher_id, subject_id, day_of_week, start_time, end_time",
+    )
     .eq("school_id", input.schoolId)
     .eq("day_of_week", input.dayOfWeek)
     .or(`class_id.eq.${input.classId},${teacherFilters}`);
@@ -532,14 +677,25 @@ async function fetchLessonsForConflictCheck(input: {
   return data || [];
 }
 
-async function fetchTeacherAssignmentReferences(schoolId: string, teacherId: string | null | undefined) {
+async function fetchTeacherAssignmentReferences(
+  schoolId: string,
+  teacherId: string | null | undefined,
+) {
   const normalizedTeacherId = String(teacherId || "").trim();
   if (!normalizedTeacherId) {
     return { teacherProfiles: [], teacherRows: [] };
   }
 
-  const teacherProfiles: Array<{ id: string; school_id: string | null; role: string | null }> = [];
-  const teacherRows: Array<{ id: string; profile_id: string | null; school_id: string | null }> = [];
+  const teacherProfiles: Array<{
+    id: string;
+    school_id: string | null;
+    role: string | null;
+  }> = [];
+  const teacherRows: Array<{
+    id: string;
+    profile_id: string | null;
+    school_id: string | null;
+  }> = [];
 
   const { data: directProfile, error: directProfileError } = await supabaseAdmin
     .from("profiles")
@@ -558,7 +714,10 @@ async function fetchTeacherAssignmentReferences(schoolId: string, teacherId: str
     .eq("school_id", schoolId)
     .or(`id.eq.${normalizedTeacherId},profile_id.eq.${normalizedTeacherId}`);
 
-  if (teacherRowResult.error && !isMissingRelationError(teacherRowResult.error)) {
+  if (
+    teacherRowResult.error &&
+    !isMissingRelationError(teacherRowResult.error)
+  ) {
     throw teacherRowResult.error;
   }
 
@@ -585,8 +744,14 @@ async function fetchTeacherAssignmentReferences(schoolId: string, teacherId: str
   return { teacherProfiles, teacherRows };
 }
 
-function isMissingRelationError(error: { code?: string | null; message?: string | null } | null | undefined) {
+function isMissingRelationError(
+  error: { code?: string | null; message?: string | null } | null | undefined,
+) {
   const code = String(error?.code || "");
   const message = String(error?.message || "").toLowerCase();
-  return code === "42P01" || code === "PGRST205" || message.includes("does not exist");
+  return (
+    code === "42P01" ||
+    code === "PGRST205" ||
+    message.includes("does not exist")
+  );
 }

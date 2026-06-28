@@ -1,6 +1,6 @@
 import { normalizeRole } from "./roles.ts";
 
-export const TEACHER_DASHBOARD_PATH = "/teacher";
+export const TEACHER_DASHBOARD_PATH = "/app/teacher";
 export const PAYMENTS_DASHBOARD_PATH = "/app/payments";
 export const PRINCIPAL_DASHBOARD_PATH = "/app/principal";
 export const DEPUTY_HEAD_DASHBOARD_PATH = "/app/deputy-head";
@@ -10,10 +10,11 @@ export const ACADEMIC_ADMIN_DASHBOARD_PATH = "/app/academic-admin";
 export const HR_ADMIN_DASHBOARD_PATH = "/app/hr-admin";
 export const ICT_ADMIN_DASHBOARD_PATH = "/app/ict-admin";
 export const DISCIPLINE_ADMIN_DASHBOARD_PATH = "/app/discipline-admin";
+export const REGISTRAR_DASHBOARD_PATH = "/app/registrar";
 export const SUPER_ADMIN_DASHBOARD_PATH = "/app/super-admin";
 export const ADMIN_DASHBOARD_PATH = "/app/dashboard";
-export const STUDENT_DASHBOARD_PATH = "/student";
-export const PARENT_DASHBOARD_PATH = "/parent";
+export const STUDENT_DASHBOARD_PATH = "/app/student";
+export const PARENT_DASHBOARD_PATH = "/app/parent";
 
 const LEGACY_PROTECTED_PREFIX_REDIRECTS = [
   ["/payments", PAYMENTS_DASHBOARD_PATH],
@@ -52,6 +53,7 @@ function roleToPath(role: string | null | undefined) {
   if (normalized === "HR_ADMIN") return HR_ADMIN_DASHBOARD_PATH;
   if (normalized === "ICT_ADMIN") return ICT_ADMIN_DASHBOARD_PATH;
   if (normalized === "DISCIPLINE_ADMIN") return DISCIPLINE_ADMIN_DASHBOARD_PATH;
+  if (normalized === "REGISTRAR") return REGISTRAR_DASHBOARD_PATH;
   if (normalized === "SUPER_ADMIN") return SUPER_ADMIN_DASHBOARD_PATH;
   return ADMIN_DASHBOARD_PATH;
 }
@@ -63,44 +65,44 @@ function isSafeRedirect(
 }
 
 function mapTeacherSharedPath(pathname: string): string {
-  if (pathname === "/app/profile") return "/teacher/profile";
+  if (pathname === "/app/profile") return "/app/teacher/profile";
   if (pathname.startsWith("/app/profile/")) {
-    return pathname.replace("/app/profile", "/teacher/profile");
+    return pathname.replace("/app/profile", "/app/teacher/profile");
   }
-  if (pathname === "/app/settings") return "/teacher/settings";
+  if (pathname === "/app/settings") return "/app/teacher/settings";
   if (pathname.startsWith("/app/settings/")) {
-    return pathname.replace("/app/settings", "/teacher/settings");
+    return pathname.replace("/app/settings", "/app/teacher/settings");
   }
   return pathname;
 }
 
 function mapStudentSharedPath(pathname: string): string {
-  if (pathname === "/app/profile") return "/student/profile";
+  if (pathname === "/app/profile") return "/app/student/profile";
   if (pathname.startsWith("/app/profile/")) {
-    return pathname.replace("/app/profile", "/student/profile");
+    return pathname.replace("/app/profile", "/app/student/profile");
   }
-  if (pathname === "/app/settings") return "/student/settings";
+  if (pathname === "/app/settings") return "/app/student/settings";
   if (pathname.startsWith("/app/settings/")) {
-    return pathname.replace("/app/settings", "/student/settings");
+    return pathname.replace("/app/settings", "/app/student/settings");
   }
-  if (pathname === "/app/messages") return "/student/messages";
-  if (pathname === "/app/notifications") return "/student/notifications";
-  if (pathname === "/app/announcements") return "/student/announcements";
+  if (pathname === "/app/messages") return "/app/student/messages";
+  if (pathname === "/app/notifications") return "/app/student/notifications";
+  if (pathname === "/app/announcements") return "/app/student/announcements";
   return pathname;
 }
 
 function mapParentSharedPath(pathname: string): string {
-  if (pathname === "/app/profile") return "/parent/profile";
+  if (pathname === "/app/profile") return "/app/parent/profile";
   if (pathname.startsWith("/app/profile/")) {
-    return pathname.replace("/app/profile", "/parent/profile");
+    return pathname.replace("/app/profile", "/app/parent/profile");
   }
-  if (pathname === "/app/settings") return "/parent/settings";
+  if (pathname === "/app/settings") return "/app/parent/settings";
   if (pathname.startsWith("/app/settings/")) {
-    return pathname.replace("/app/settings", "/parent/settings");
+    return pathname.replace("/app/settings", "/app/parent/settings");
   }
-  if (pathname === "/app/messages") return "/parent/messages";
-  if (pathname === "/app/notifications") return "/parent/notifications";
-  if (pathname === "/app/announcements") return "/parent/announcements";
+  if (pathname === "/app/messages") return "/app/parent/messages";
+  if (pathname === "/app/notifications") return "/app/parent/notifications";
+  if (pathname === "/app/announcements") return "/app/parent/announcements";
   return pathname;
 }
 
@@ -144,9 +146,9 @@ export function resolveProtectedRolePrefix(
   const normalized = normalizeRole(role);
   if (!normalized) return "";
   if (normalized === "ADMIN") return "/app";
-  if (normalized === "TEACHER") return "/teacher";
-  if (normalized === "STUDENT") return "/student";
-  if (normalized === "PARENT") return "/parent";
+  if (normalized === "TEACHER") return "/app/teacher";
+  if (normalized === "STUDENT") return "/app/student";
+  if (normalized === "PARENT") return "/app/parent";
   if (normalized === "PAYMENTS") return "/app/payments";
   if (normalized === "PRINCIPAL") return "/app/principal";
   if (normalized === "DEPUTY_HEAD") return "/app/deputy-head";
@@ -156,6 +158,7 @@ export function resolveProtectedRolePrefix(
   if (normalized === "HR_ADMIN") return "/app/hr-admin";
   if (normalized === "ICT_ADMIN") return "/app/ict-admin";
   if (normalized === "DISCIPLINE_ADMIN") return "/app/discipline-admin";
+  if (normalized === "REGISTRAR") return "/app/registrar";
   if (normalized === "SUPER_ADMIN") return "/app/super-admin";
   return "/app";
 }
@@ -251,6 +254,33 @@ export function resolveOnboardingPath({
   return resolvePostLoginPath(normalized, redirectTo);
 }
 
+/**
+ * Route a user whose auth row exists but profile/school setup is incomplete.
+ * Without this, verified users land on /login?error=profile_not_found with
+ * no path to finish registration. For principals/admins we send them back to
+ * /register?resume=school so they can complete step 3 without re-doing
+ * steps 1 and 2. For non-staff roles we keep the existing error message.
+ */
+export function resolveMissingProfilePath({
+  role,
+  hasSchool,
+  emailVerified,
+}: {
+  role: string | null | undefined;
+  hasSchool: boolean;
+  emailVerified: boolean;
+}): string {
+  if (!emailVerified) return "/verify-email";
+  const normalized = normalizeRole(role);
+  if (
+    (normalized === "ADMIN" || normalized === "PRINCIPAL" || !normalized) &&
+    !hasSchool
+  ) {
+    return "/register?resume=school";
+  }
+  return "/login?error=profile_not_found";
+}
+
 export function resolveAppWorkspaceHome(
   role: string | null | undefined,
 ): string {
@@ -267,6 +297,7 @@ export function resolveAppWorkspaceHome(
   if (normalized === "HR_ADMIN") return HR_ADMIN_DASHBOARD_PATH;
   if (normalized === "ICT_ADMIN") return ICT_ADMIN_DASHBOARD_PATH;
   if (normalized === "DISCIPLINE_ADMIN") return DISCIPLINE_ADMIN_DASHBOARD_PATH;
+  if (normalized === "REGISTRAR") return REGISTRAR_DASHBOARD_PATH;
   if (normalized === "SUPER_ADMIN") return SUPER_ADMIN_DASHBOARD_PATH;
   return ADMIN_DASHBOARD_PATH;
 }

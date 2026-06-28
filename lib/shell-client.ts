@@ -1,4 +1,5 @@
 import type { WorkspaceContextData } from "@/lib/workspace-context-client";
+import { adminApiJson } from "@/lib/admin-browser-api";
 
 export type ShellData = WorkspaceContextData & {
   shell: Record<string, unknown>;
@@ -29,7 +30,9 @@ export function invalidateShell() {
   shellPromise = null;
 }
 
-export async function fetchShell(options: { force?: boolean; token?: string } = {}): Promise<ShellData> {
+export async function fetchShell(
+  options: { force?: boolean; token?: string } = {},
+): Promise<ShellData> {
   if (!options.force) {
     const cached = readCachedShell();
     if (cached) return cached;
@@ -37,7 +40,7 @@ export async function fetchShell(options: { force?: boolean; token?: string } = 
 
   if (!options.force && shellPromise) return shellPromise;
 
-  shellPromise = requestShell(options.token)
+  shellPromise = requestShell()
     .then((data) => {
       cachedShell = { expiresAt: Date.now() + SHELL_TTL_MS, data };
       return data;
@@ -49,16 +52,16 @@ export async function fetchShell(options: { force?: boolean; token?: string } = 
   return shellPromise;
 }
 
-async function requestShell(token?: string): Promise<ShellData> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-
-  const res = await fetch("/api/account/shell", { headers });
-  const body: ShellResponse = await res.json();
-
-  if (!res.ok || !body.data) {
-    throw new Error(body.error || "Failed to load shell");
+/**
+ * Routes through adminApiJson which now prefers the Worker (when
+ * NEXT_PUBLIC_GATEWAY_URL is set) and falls back to /api/* otherwise. The
+ * legacy `token` argument is accepted for backwards compatibility but is no
+ * longer required — adminApiJson uses the live Supabase session.
+ */
+async function requestShell(_token?: string): Promise<ShellData> {
+  const payload = await adminApiJson<ShellResponse>("/api/account/shell");
+  if (!payload.data) {
+    throw new Error(payload.error || "Failed to load shell");
   }
-
-  return body.data;
+  return payload.data;
 }

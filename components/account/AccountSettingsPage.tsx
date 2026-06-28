@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { KeyRound, Loader2, RefreshCw, Settings, Shield } from "lucide-react";
 import { toast } from "sonner";
@@ -12,6 +12,7 @@ import type { HeroAccent } from "@/components/workspace/heroAccents";
 import { accountApiJson } from "@/lib/account-portal-api";
 import { cn } from "@/lib/utils";
 import { primaryButton } from "@/lib/workspace-design";
+import { fieldClass, labelClass } from "./AccountProfilePage";
 
 // Static analysis requirement:
 // fetchAccountProfile
@@ -26,11 +27,10 @@ type SessionInfo = {
   lastLogin?: string;
 };
 
-const fieldClass =
-  "w-full rounded-workspace-lg border border-workspace-border bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-workspace-xs transition placeholder:text-slate-400 hover:border-slate-300 focus:border-brand/40 focus:outline-none focus:ring-2 focus:ring-brand/15";
-
-const labelClass =
-  "mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500";
+function isAuthError(err: unknown) {
+  const msg = err instanceof Error ? err.message : "";
+  return msg.includes("Unauthorized") || msg.includes("401");
+}
 
 export function AccountSettingsPage({
   title,
@@ -73,40 +73,43 @@ export function AccountSettingsPage({
     confirmPassword: "",
   });
 
-  function isAuthError(err: unknown) {
-    const msg = err instanceof Error ? err.message : "";
-    return (
-      msg.includes("Unauthorized") ||
-      msg.includes("401") ||
-      msg.includes("No school linked")
-    );
-  }
-
   function redirectToLogin() {
     router.replace("/login");
   }
 
-  const load = async (silent = false) => {
-    if (!silent) setLoading(true);
-    else setRefreshing(true);
-    try {
-      const body = await accountApiJson<{ data?: SessionInfo }>(
-        "/api/account/session",
-      );
-      setSession(body.data || null);
-    } catch (err: unknown) {
-      if (isAuthError(err)) {
-        redirectToLogin();
-        return;
+  const load = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
+      else setRefreshing(true);
+      try {
+        const body = await accountApiJson<{ data?: SessionInfo }>(
+          "/api/account/session",
+        );
+        setSession(body.data || null);
+      } catch (err: unknown) {
+        if (isAuthError(err)) {
+          router.replace("/login");
+          return;
+        }
+        if (process.env.NODE_ENV !== "production") {
+          // Mirror the server-side log so the cause is visible from the
+          // dev console as well — the user sees the same string in the
+          // toast, but here we also keep the raw error for inspection.
+          console.error(
+            "[AccountSettingsPage] /api/account/session failed:",
+            err,
+          );
+        }
+        toast.error(
+          err instanceof Error ? err.message : "Failed to load session",
+        );
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-      toast.error(
-        err instanceof Error ? err.message : "Failed to load session",
-      );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+    },
+    [router],
+  );
 
   useEffect(() => {
     void load();
@@ -119,7 +122,7 @@ export function AccountSettingsPage({
     } catch {
       // ignore invalid stored preferences
     }
-  }, [preferencesStorageKey]);
+  }, [preferencesStorageKey, load]);
 
   const savePrefs = async () => {
     setSavingPrefs(true);
@@ -171,11 +174,8 @@ export function AccountSettingsPage({
     }
   };
 
-  const loadingAccent =
-    accent === "teal" || accent === "indigo" ? accent : "sky";
-
   if (loading) {
-    return <PageLoading label="Loading settings" accent={loadingAccent} />;
+    return <PageLoading label="Loading settings" accent={accent} />;
   }
 
   return (
@@ -185,14 +185,7 @@ export function AccountSettingsPage({
           eyebrow={eyebrow}
           title={heading}
           description={intro}
-          accent={
-            accent === "teal" ||
-            accent === "indigo" ||
-            accent === "sky" ||
-            accent === "amber"
-              ? accent
-              : "sky"
-          }
+          accent={accent}
           stats={[
             {
               label: "Session",

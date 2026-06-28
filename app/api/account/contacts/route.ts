@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { requireActorContext } from "@/lib/server-auth";
-import { applyPlatformRateLimit, platformRateLimitResponse } from "@/lib/platform-api-guard";
+import {
+  applyPlatformRateLimit,
+  platformRateLimitResponse,
+} from "@/lib/platform-api-guard";
 import { safeErrorMessage } from "@/lib/server-guards";
 import { roleDatabaseValues, type KnownRole } from "@/lib/roles";
 import { resolveMessagingIdentityId } from "@/lib/message-participants";
@@ -20,11 +23,19 @@ const MESSAGING_ROLES: KnownRole[] = [
   "HR_ADMIN",
   "ICT_ADMIN",
   "DISCIPLINE_ADMIN",
+  "REGISTRAR",
 ];
 
 const CONTACT_TARGETS: Record<KnownRole, KnownRole[]> = {
   STUDENT: ["TEACHER", "ADMIN", "PRINCIPAL", "DEPUTY_HEAD", "GUIDANCE_OFFICE"],
-  PARENT: ["TEACHER", "ADMIN", "PRINCIPAL", "DEPUTY_HEAD", "GUIDANCE_OFFICE", "BURSAR"],
+  PARENT: [
+    "TEACHER",
+    "ADMIN",
+    "PRINCIPAL",
+    "DEPUTY_HEAD",
+    "GUIDANCE_OFFICE",
+    "BURSAR",
+  ],
   TEACHER: ["STUDENT", "PARENT", "ADMIN", "PRINCIPAL", "DEPUTY_HEAD"],
   ADMIN: ["TEACHER", "PARENT", "STUDENT", "PRINCIPAL", "DEPUTY_HEAD"],
   PRINCIPAL: ["TEACHER", "PARENT", "STUDENT", "DEPUTY_HEAD", "BURSAR"],
@@ -36,6 +47,7 @@ const CONTACT_TARGETS: Record<KnownRole, KnownRole[]> = {
   HR_ADMIN: ["TEACHER", "ADMIN", "PRINCIPAL"],
   ICT_ADMIN: ["ADMIN", "PRINCIPAL", "TEACHER"],
   DISCIPLINE_ADMIN: ["STUDENT", "PARENT", "TEACHER", "PRINCIPAL"],
+  REGISTRAR: ["TEACHER", "PRINCIPAL", "DEPUTY_HEAD", "ADMIN"],
   SUPER_ADMIN: ["ADMIN", "PRINCIPAL"],
 };
 
@@ -46,31 +58,42 @@ export async function GET(req: Request) {
         allowedRoles: MESSAGING_ROLES,
         requireSchool: true,
       },
-      req
+      req,
     );
 
     if (!access.ok) return access.response;
 
+    const { schoolId, userId, role } = access.context;
+    if (!schoolId) {
+      return NextResponse.json(
+        { error: "No school linked to this account" },
+        { status: 403 },
+      );
+    }
+
     const rate = await applyPlatformRateLimit({
       scope: "account-contacts",
+      schoolId,
       req,
       userId: access.context.userId,
       preset: "accountContacts",
     });
     if (!rate.allowed) return platformRateLimitResponse(rate);
 
-    const { schoolId, userId, role } = access.context;
-    if (!schoolId) {
-      return NextResponse.json({ error: "No school linked to this account" }, { status: 403 });
-    }
-
-    const targetRoles = CONTACT_TARGETS[role] || ["TEACHER", "ADMIN", "PRINCIPAL"];
+    const targetRoles = CONTACT_TARGETS[role] || [
+      "TEACHER",
+      "ADMIN",
+      "PRINCIPAL",
+    ];
     const roleValues = Array.from(
-      new Set(targetRoles.flatMap((target) => roleDatabaseValues(target)))
+      new Set(targetRoles.flatMap((target) => roleDatabaseValues(target))),
     );
 
     const { searchParams } = new URL(req.url);
-    const limit = Math.min(Math.max(Number(searchParams.get("limit") || 200), 1), 500);
+    const limit = Math.min(
+      Math.max(Number(searchParams.get("limit") || 200), 1),
+      500,
+    );
 
     let rows: Array<{
       id: string;
@@ -91,8 +114,13 @@ export async function GET(req: Request) {
 
     if (withAuthLink.error) {
       const code = (withAuthLink.error as { code?: string }).code;
-      const message = String((withAuthLink.error as { message?: string }).message || "");
-      if (code !== "42703" && !message.includes('column "auth_user_id" does not exist')) {
+      const message = String(
+        (withAuthLink.error as { message?: string }).message || "",
+      );
+      if (
+        code !== "42703" &&
+        !message.includes('column "auth_user_id" does not exist')
+      ) {
         throw withAuthLink.error;
       }
 
@@ -128,7 +156,7 @@ export async function GET(req: Request) {
   } catch (error: unknown) {
     return NextResponse.json(
       { error: safeErrorMessage(error, "Failed to load contacts") },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

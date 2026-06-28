@@ -2,34 +2,80 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { NextResponse } from "next/server";
 import { nanoid } from "nanoid";
 import { z } from "zod";
-import { getClientIp, parseJsonWithSchema, safeErrorMessage } from "@/lib/server-guards";
-import { applyAuthApiRateLimit, authApiRateLimitResponse } from "@/lib/auth-api-rate-limit";
-import { requireAdminSetupContext } from "@/lib/server-auth";
+import {
+  getClientIp,
+  parseJsonWithSchema,
+  safeErrorMessage,
+} from "@/lib/server-guards";
+import {
+  applyAuthApiRateLimit,
+  authApiRateLimitResponse,
+} from "@/lib/auth-api-rate-limit";
+import { createClient } from "@/lib/supabase/server";
+import {
+  resolveVerifiedAuthUser,
+  resolveVerifiedBearerUser,
+} from "@/lib/supabase-auth-verify";
 import { invalidateActorCaches } from "@/lib/invalidate-actor-caches";
 import { fetchProfileByIdentity } from "@/lib/profile-lookup";
 import { createAuditLog } from "@/lib/audit-log";
 import { initializeSchoolDefaults } from "@/lib/school-initialization";
-import { isPrincipalEmailVerified } from "@/lib/principal-email-verified";
+import {
+  confirmEmailViaAdmin,
+  consumeOtpVerificationAttestation,
+  hasOtpVerificationAttestation,
+} from "@/lib/principal-email-verified";
+import {
+  validateSchoolAccessCode,
+  consumeSchoolAccessCode,
+} from "@/lib/school-access-code";
+
+function readBearerToken(req: Request) {
+  const header =
+    req.headers.get("authorization") || req.headers.get("Authorization");
+  if (!header) return null;
+
+  const [scheme, token] = header.split(" ");
+  if (!/^Bearer$/i.test(scheme || "") || !token) return "";
+  return token.trim();
+}
+
+async function resolveRegistrationUser(req: Request) {
+  const bearerToken = readBearerToken(req);
+  if (bearerToken !== null) {
+    if (!bearerToken) {
+      return { user: null, error: new Error("Invalid authorization header") };
+    }
+    return resolveVerifiedBearerUser(supabaseAdmin.auth, bearerToken);
+  }
+
+  const supabase = await createClient();
+  const { user, error } = await resolveVerifiedAuthUser(supabase);
+  return { user, error };
+}
 
 const registerSchoolSchema = z
   .object({
-  email: z.string().email(),
-  schoolName: z.string().min(2).max(120),
-  schoolCode: z.string().min(4).max(50),
-  headTeacherName: z.string().min(2).max(120).optional(),
-  /** @deprecated Use headTeacherName — kept for older registration clients */
-  adminName: z.string().min(2).max(120).optional(),
-  phone: z.string().max(40).optional().default(""),
-  address: z.string().max(300).optional().default(""),
-  logoUrl: z.string().url().optional().or(z.literal("")),
-  emisCode: z.string().max(60).optional().default(""),
-  province: z.string().max(120).optional().default(""),
-  district: z.string().max(120).optional().default(""),
-  schoolType: z.string().max(120).optional().default(""),
-  ownershipType: z.string().max(120).optional().default(""),
-  /** The 6-digit access code that was pre-verified on the frontend */
-  accessCode: z.string().length(6).regex(/^\d{6}$/, "Invalid access code format"),
-})
+    email: z.string().email(),
+    schoolName: z.string().min(2).max(120),
+    schoolCode: z.string().min(4).max(50),
+    headTeacherName: z.string().min(2).max(120).optional(),
+    /** @deprecated Use headTeacherName — kept for older registration clients */
+    adminName: z.string().min(2).max(120).optional(),
+    phone: z.string().max(40).optional().default(""),
+    address: z.string().max(300).optional().default(""),
+    logoUrl: z.string().url().optional().or(z.literal("")),
+    emisCode: z.string().max(60).optional().default(""),
+    province: z.string().max(120).optional().default(""),
+    district: z.string().max(120).optional().default(""),
+    schoolType: z.string().max(120).optional().default(""),
+    ownershipType: z.string().max(120).optional().default(""),
+    /** The 6-digit access code that was pre-verified on the frontend */
+    accessCode: z
+      .string()
+      .length(6)
+      .regex(/^\d{6}$/, "Invalid access code format"),
+  })
   .superRefine((data, ctx) => {
     const name = String(data.headTeacherName || data.adminName || "").trim();
     if (name.length < 2) {
@@ -44,9 +90,11 @@ const registerSchoolSchema = z
 export async function POST(req: Request) {
   try {
     const ip = getClientIp(req);
-    const access = await requireAdminSetupContext(req);
-    if (!access.ok) return access.response;
-    const { userId } = access.context;
+    const auth = await resolveRegistrationUser(req);
+    if (auth.error || !auth.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const userId = auth.user.id;
     const rate = await applyAuthApiRateLimit({
       scope: "registerSchool",
       req,
@@ -71,79 +119,117 @@ export async function POST(req: Request) {
       ownershipType,
       accessCode,
     } = body;
-    const headTeacherName = String(body.headTeacherName || body.adminName || "").trim();
+    const headTeacherName = String(
+      body.headTeacherName || body.adminName || "",
+    ).trim();
 
     if (!email || !schoolName || !schoolCode || !headTeacherName) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing required fields" },
+        { status: 400 },
+      );
     }
 
     const authUser = await supabaseAdmin.auth.admin.getUserById(userId);
     if (authUser.error || !authUser.data.user) {
-      return NextResponse.json({ error: "Authenticated user could not be verified." }, { status: 401 });
-    }
-
-    const emailVerified = await isPrincipalEmailVerified(supabaseAdmin, userId, email);
-    if (!emailVerified) {
-      return NextResponse.json({ error: "Please verify your email before creating a school." }, { status: 403 });
-    }
-
-    // ── 1. Validate and consume the access code ──────────────────────────────
-    const { data: codeRow, error: codeError } = await supabaseAdmin
-      .from("access_codes")
-      .select("code, expires_at, used_at, max_uses, use_count, province, district, school_type, ownership_type, approval_status")
-      .eq("code", accessCode)
-      .maybeSingle();
-
-    if (codeError) {
-      console.error("[register-school] access_code DB error:", codeError);
-      return NextResponse.json({ error: "Could not verify access code." }, { status: 500 });
-    }
-
-    if (!codeRow) {
-      return NextResponse.json({ error: "Invalid access code." }, { status: 400 });
-    }
-
-    const maxUses = Number(codeRow.max_uses || 1);
-    const useCount = Number(codeRow.use_count || 0);
-
-    if (codeRow.used_at || useCount >= maxUses) {
-      return NextResponse.json({ error: "This access code has already been used." }, { status: 400 });
-    }
-
-    if (new Date() > new Date(codeRow.expires_at)) {
-      return NextResponse.json({ error: "This access code has expired." }, { status: 400 });
-    }
-
-    if (codeRow.approval_status && codeRow.approval_status !== "approved") {
-      return NextResponse.json({ error: "This access code is not approved for school creation yet." }, { status: 400 });
-    }
-
-    const codeMismatch =
-      !matchesCodeScope(codeRow.province, province) ||
-      !matchesCodeScope(codeRow.district, district) ||
-      !matchesCodeScope(codeRow.school_type, schoolType) ||
-      !matchesCodeScope(codeRow.ownership_type, ownershipType);
-
-    if (codeMismatch) {
       return NextResponse.json(
-        { error: "This access code was issued for a different province, district, school type, or ownership. Please check your school details match the code." },
-        { status: 400 }
+        { error: "Authenticated user could not be verified." },
+        { status: 401 },
+      );
+    }
+
+    const authenticatedEmail = String(authUser.data.user.email || "")
+      .trim()
+      .toLowerCase();
+    if (
+      authenticatedEmail &&
+      authenticatedEmail !== email.trim().toLowerCase()
+    ) {
+      return NextResponse.json(
+        { error: "Registration email must match the signed-in account." },
+        { status: 400 },
+      );
+    }
+
+    // Email must be verified before we create a school on the user's behalf.
+    // Single source of truth: auth.users.email_confirmed_at. We try one
+    // recovery path before returning 403, so a flaky SMTP delivery or
+    // Supabase API hiccup during /verify-otp doesn't permanently strand
+    // new principals:
+    //   1. Self-heal via the post-OTP Redis attestation (set by verify-otp
+    //      on each successful OTP match). Catches the "silent admin-API
+    //      fail" case.
+    //   2. Hard 403 with a clear hint.
+    if (!authUser.data.user.email_confirmed_at) {
+      const attested = await hasOtpVerificationAttestation(userId);
+      if (attested) {
+        try {
+          await confirmEmailViaAdmin(supabaseAdmin, userId);
+          await consumeOtpVerificationAttestation(userId);
+          // Best-effort log so we can spot self-heal hits during the rollout.
+          console.warn(
+            "[register-school] self-healed email_confirmed_at for user",
+            userId,
+            "via OTP attestation",
+          );
+          // Re-fetch so the snapshot reflects the just-applied update.
+          const refreshed = await supabaseAdmin.auth.admin.getUserById(userId);
+          if (!refreshed.error && refreshed.data.user) {
+            authUser.data.user = refreshed.data.user;
+          }
+        } catch (healErr) {
+          console.error(
+            "[register-school] self-heal email confirm failed:",
+            safeErrorMessage(healErr, "unknown error"),
+          );
+        }
+      }
+    }
+
+    if (!authUser.data.user.email_confirmed_at) {
+      return NextResponse.json(
+        {
+          error:
+            "Please verify your email before creating a school. If you just verified it, refresh the page and try again.",
+        },
+        { status: 403 },
+      );
+    }
+
+    // ── 1. Validate the access code ─────────────────────────────────────────
+    const codeValidation = await validateSchoolAccessCode(accessCode, {
+      schoolDetails: { province, district, schoolType, ownershipType },
+    });
+    if (!codeValidation.ok) {
+      return NextResponse.json(
+        { error: codeValidation.error },
+        { status: codeValidation.status },
       );
     }
 
     // ── 2. Check for existing school membership ──────────────────────────────
-    const { data: existingProfile, error: existingProfileError } = await fetchProfileByIdentity<{
-      id?: string;
-      school_id?: string | null;
-    }>(supabaseAdmin as any, userId, "id, school_id", email);
+    const { data: existingProfile, error: existingProfileError } =
+      await fetchProfileByIdentity<{
+        id?: string;
+        school_id?: string | null;
+      }>(supabaseAdmin as any, userId, "id, school_id", email);
 
     if (existingProfileError) {
-      console.error("[register-school] profile lookup error:", existingProfileError);
-      return NextResponse.json({ error: "Could not verify existing profile." }, { status: 500 });
+      console.error(
+        "[register-school] profile lookup error:",
+        existingProfileError,
+      );
+      return NextResponse.json(
+        { error: "Could not verify existing profile." },
+        { status: 500 },
+      );
     }
 
     if (existingProfile?.school_id) {
-      return NextResponse.json({ error: "This account already belongs to a school" }, { status: 409 });
+      return NextResponse.json(
+        { error: "This account already belongs to a school" },
+        { status: 409 },
+      );
     }
 
     // ── 3. Normalize school code ─────────────────────────────────────────────
@@ -153,7 +239,10 @@ export async function POST(req: Request) {
       .slice(0, 12);
 
     if (normalizedCode.length < 4) {
-      return NextResponse.json({ error: "Invalid school code" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid school code" },
+        { status: 400 },
+      );
     }
 
     let finalCode = normalizedCode;
@@ -202,7 +291,8 @@ export async function POST(req: Request) {
     const profilePayload = {
       school_id: school.id,
       role: "principal",
-      first_name: headTeacherName.split(" ").slice(0, -1).join(" ") || headTeacherName,
+      first_name:
+        headTeacherName.split(" ").slice(0, -1).join(" ") || headTeacherName,
       last_name: headTeacherName.split(" ").slice(-1).join(" ") || "",
       email,
       phone,
@@ -222,14 +312,19 @@ export async function POST(req: Request) {
               id: userId,
               ...profilePayload,
             },
-            { onConflict: "id" }
+            { onConflict: "id" },
           )
         ).error;
 
     if (profileError) {
-      console.error("Profile creation error details:", JSON.stringify(profileError, null, 2));
+      console.error(
+        "Profile creation error details:",
+        JSON.stringify(profileError, null, 2),
+      );
       await supabaseAdmin.from("schools").delete().eq("id", school.id);
-      throw new Error(profileError.message || "Failed to create Head Teacher profile");
+      throw new Error(
+        profileError.message || "Failed to create Head Teacher profile",
+      );
     }
 
     await invalidateActorCaches(userId);
@@ -237,14 +332,7 @@ export async function POST(req: Request) {
     const initialization = await initializeSchoolDefaults(school.id);
 
     // ── 7. Mark access code as used ──────────────────────────────────────────
-    await supabaseAdmin
-      .from("access_codes")
-      .update({
-        used_at: useCount + 1 >= maxUses ? new Date().toISOString() : null,
-        used_by_email: email,
-        use_count: useCount + 1,
-      })
-      .eq("code", accessCode);
+    await consumeSchoolAccessCode(accessCode, email);
 
     await createAuditLog({
       schoolId: school.id,
@@ -261,17 +349,30 @@ export async function POST(req: Request) {
       ipAddress: ip,
     });
 
-    return NextResponse.json({ success: true, schoolCode: finalCode, initialization });
-  } catch (error: unknown) {
-    console.error("Registration API error:", safeErrorMessage(error, "Unknown registration error"));
     return NextResponse.json({
-      error: safeErrorMessage(error, "An unexpected error occurred during registration")
-    }, { status: 500 });
+      success: true,
+      schoolCode: finalCode,
+      initialization,
+    });
+  } catch (error: unknown) {
+    // Log the full error object — Supabase/PostgREST errors carry useful
+    // fields (code, details, hint) that safeErrorMessage cannot surface.
+    console.error("Registration API error:", {
+      message: safeErrorMessage(error, "Unknown registration error"),
+      code: (error as { code?: string } | null)?.code,
+      details: (error as { details?: string } | null)?.details,
+      hint: (error as { hint?: string } | null)?.hint,
+      stack: error instanceof Error ? error.stack : undefined,
+      raw: error,
+    });
+    return NextResponse.json(
+      {
+        error: safeErrorMessage(
+          error,
+          "An unexpected error occurred during registration",
+        ),
+      },
+      { status: 500 },
+    );
   }
-}
-
-function matchesCodeScope(expected: string | null | undefined, actual: string | null | undefined) {
-  const expectedValue = String(expected || "").trim().toLowerCase();
-  if (!expectedValue) return true;
-  return expectedValue === String(actual || "").trim().toLowerCase();
 }

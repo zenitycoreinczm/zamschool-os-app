@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { adminApiJson } from "@/lib/admin-browser-api";
 import { Loader2, Save, School } from "lucide-react";
 import { toast } from "sonner";
+import { Surface } from "@/components/workspace/Surface";
 
 type SchoolRecord = {
   id: string;
@@ -262,10 +263,16 @@ export default function AdminSchoolPage() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-10 flex flex-col items-center gap-3">
-        <Loader2 className="w-6 h-6 animate-spin text-sky-500" />
-        <p className="text-sm text-slate-500">Loading school profile...</p>
-      </div>
+      <Surface
+        variant="default"
+        role="status"
+        aria-live="polite"
+        className="flex flex-col items-center gap-3 p-10 text-sm text-slate-500"
+        as="div"
+      >
+        <Loader2 className="h-6 w-6 animate-spin text-sky-500" />
+        <p>Loading school profile...</p>
+      </Surface>
     );
   }
 
@@ -278,7 +285,7 @@ export default function AdminSchoolPage() {
         </p>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 md:p-6 space-y-5">
+      <Surface variant="default" className="space-y-5 p-5 md:p-6" as="div">
         <div className="grid md:grid-cols-2 gap-4">
           <Field
             label="School name"
@@ -370,34 +377,35 @@ export default function AdminSchoolPage() {
 
         <div className="pt-2 flex items-center justify-end">
           <button
+            type="button"
             onClick={onSave}
             disabled={saving || !canSave}
-            className="inline-flex items-center gap-2 rounded-xl bg-sky-500 text-white px-4 py-2.5 text-sm font-semibold hover:bg-sky-400 disabled:opacity-60 transition-colors"
+            className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-sky-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 disabled:opacity-60"
           >
             {saving ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <Save className="w-4 h-4" />
+              <Save className="h-4 w-4" />
             )}
             {isCreatingSchool ? "Create school" : "Save changes"}
           </button>
         </div>
-      </div>
+      </Surface>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+      <Surface variant="default" className="p-5" as="div">
         <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center">
-            <School className="w-5 h-5" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-50 text-sky-600">
+            <School className="h-5 w-5" />
           </div>
           <div>
             <p className="font-semibold text-slate-800">School identity</p>
-            <p className="text-sm text-slate-500 mt-1">
+            <p className="mt-1 text-sm text-slate-500">
               These details appear across admin workspace, communication
               templates, and reports.
             </p>
           </div>
         </div>
-      </div>
+      </Surface>
     </div>
   );
 }

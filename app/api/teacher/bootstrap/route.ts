@@ -20,6 +20,7 @@ import {
   isVisibleToRole,
   jsonWithPrivateCache,
 } from "@/lib/teacher-route-common";
+import { withCache, CACHE_CONFIGS } from "@/lib/enhanced-cache";
 
 type LoadedTeacherProfile = {
   id?: string;
@@ -93,6 +94,7 @@ export async function GET(req: Request) {
 
     const rate = await applyPlatformRateLimit({
       scope: "teacher-bootstrap",
+      schoolId: access.context.schoolId,
       req,
       userId: access.context.userId,
       preset: "teacherBootstrap",
@@ -102,55 +104,59 @@ export async function GET(req: Request) {
     const schoolId = access.context.schoolId;
     const profileId = access.context.profileId || access.context.userId;
     const todayDate = formatLocalDateInputValue(new Date());
-    const lessonDayOfWeek = resolveLessonDayOfWeek(todayDate);
-    const assignmentScope = await loadTeacherAssignmentScope({
-      schoolId,
-      actorProfileId: profileId,
-    });
 
-    const [
-      profile,
-      teacherRecord,
-      schoolRecord,
-      activeYear,
-      activeTerm,
-      specializationRows,
-      teachingAssignments,
-      supervisedClasses,
-      taughtLessons,
-      supervisedLessons,
-      unreadSummary,
-      pendingGrades,
-      draftResults,
-      upcomingEvents,
-    ] = await Promise.all([
-      loadProfile(profileId, schoolId),
-      loadTeacherRecord(profileId, schoolId),
-      loadSchoolRecord(schoolId),
-      loadActiveAcademicYear(schoolId),
-      loadActiveTerm(schoolId),
-      loadTeacherSpecializationRows(schoolId, profileId),
-      loadTeacherClassSubjectAssignments(schoolId, profileId),
-      loadSupervisedClasses(schoolId, assignmentScope.actorTeacherIds),
-      fetchLessonsByTeacherIds({
-        schoolId,
-        dayOfWeek: lessonDayOfWeek,
-        teacherIds: assignmentScope.actorTeacherIds,
-      }),
-      fetchLessonsByClassIds({
-        schoolId,
-        dayOfWeek: lessonDayOfWeek,
-        classIds: assignmentScope.supervisedClassIds,
-      }),
-      loadUnreadSummary(profileId, schoolId),
-      loadPendingGrades(schoolId, assignmentScope),
-      loadDraftResults(schoolId, assignmentScope),
-      loadUpcomingEvents(schoolId, access.context.role),
-    ]);
+    const bootstrapData = await withCache(
+      `teacher-bootstrap:${access.context.userId}:${schoolId}:${todayDate}`,
+      async () => {
+        const lessonDayOfWeek = resolveLessonDayOfWeek(todayDate);
+        const assignmentScope = await loadTeacherAssignmentScope({
+          schoolId,
+          actorProfileId: profileId,
+        });
 
-    if (!profile) {
-      return NextResponse.json({ error: "Profile not found" }, { status: 404 });
-    }
+        const [
+          profile,
+          teacherRecord,
+          schoolRecord,
+          activeYear,
+          activeTerm,
+          specializationRows,
+          teachingAssignments,
+          supervisedClasses,
+          taughtLessons,
+          supervisedLessons,
+          unreadSummary,
+          pendingGrades,
+          draftResults,
+          upcomingEvents,
+        ] = await Promise.all([
+          loadProfile(profileId, schoolId),
+          loadTeacherRecord(profileId, schoolId),
+          loadSchoolRecord(schoolId),
+          loadActiveAcademicYear(schoolId),
+          loadActiveTerm(schoolId),
+          loadTeacherSpecializationRows(schoolId, profileId),
+          loadTeacherClassSubjectAssignments(schoolId, profileId),
+          loadSupervisedClasses(schoolId, assignmentScope.actorTeacherIds),
+          fetchLessonsByTeacherIds({
+            schoolId,
+            dayOfWeek: lessonDayOfWeek,
+            teacherIds: assignmentScope.actorTeacherIds,
+          }),
+          fetchLessonsByClassIds({
+            schoolId,
+            dayOfWeek: lessonDayOfWeek,
+            classIds: assignmentScope.supervisedClassIds,
+          }),
+          loadUnreadSummary(profileId, schoolId),
+          loadPendingGrades(schoolId, assignmentScope),
+          loadDraftResults(schoolId, assignmentScope),
+          loadUpcomingEvents(schoolId, access.context.role),
+        ]);
+
+        if (!profile) {
+          throw new Error("PROFILE_NOT_FOUND");
+        }
 
     const lessons = dedupeLessonsById([
       ...(taughtLessons || []),
@@ -271,7 +277,7 @@ export async function GET(req: Request) {
           address: profile.address || "",
           avatar_url:
             toProtectedAvatarUrl(profile.avatar_url, {
-              schoolId: access.context.schoolId,
+              schoolId,
               userId: profile.id || access.context.userId,
             }) || "",
           role: "TEACHER",
@@ -313,7 +319,11 @@ export async function GET(req: Request) {
         },
       },
     });
-  } catch (error: unknown) {
+  },
+    CACHE_CONFIGS.teacher.bootstrap,
+  );
+  return bootstrapData;
+} catch (error: unknown) {
     return NextResponse.json(
       { error: safeErrorMessage(error, "Failed to load teacher bootstrap") },
       { status: 500 },

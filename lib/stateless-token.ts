@@ -14,7 +14,13 @@ function getTokenSecret(): string {
   const seed =
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
     process.env.SMTP_PASS ||
-    "fallback";
+    process.env.RESET_TOKEN_SECRET;
+  if (!seed) {
+    throw new Error(
+      "Security Error: Cannot mint reset token — no HMAC secret available. " +
+        "Set SUPABASE_SERVICE_ROLE_KEY, SMTP_PASS, or RESET_TOKEN_SECRET.",
+    );
+  }
   return crypto.createHash("sha256").update(seed).digest("hex");
 }
 

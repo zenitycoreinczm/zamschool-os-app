@@ -22,11 +22,19 @@ export function WorkspaceNavMenu({
     <div className="space-y-4">
       {sections.map((section, index) => (
         <div key={`${section.label}-${index}`}>
-          <p className={cn("px-3 pb-2", index === 0 ? "pt-0" : "pt-1", ws.eyebrow)}>{section.label}</p>
+          <p
+            className={cn(
+              "px-3 pb-2",
+              index === 0 ? "pt-0" : "pt-1",
+              ws.eyebrow,
+            )}
+          >
+            {section.label}
+          </p>
           <div className="space-y-1">
-            {section.items.map((item) => (
+            {dedupeSectionItems(section.items).map((item) => (
               <ShellNavItem
-                key={item.href}
+                key={`${section.label}-${item.href}`}
                 {...item}
                 active={activePaths.has(item.href)}
                 onNavigate={onNavigate}
@@ -38,4 +46,13 @@ export function WorkspaceNavMenu({
       ))}
     </div>
   );
+}
+
+function dedupeSectionItems<T extends { href: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (seen.has(item.href)) return false;
+    seen.add(item.href);
+    return true;
+  });
 }

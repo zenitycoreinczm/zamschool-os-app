@@ -1,0 +1,48 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+
+const routePath = resolve(
+  process.cwd(),
+  "app",
+  "api",
+  "admin",
+  "announcements",
+  "route.ts",
+);
+
+test("admin announcements route POST writes a created audit log", async () => {
+  const source = await readFile(routePath, "utf8");
+
+  // POST is the existing, audited happy path. This test pins the contract for
+  // future refactors.
+  assert.match(source, /export async function POST/);
+  assert.match(source, /action:\s*"announcement\.created"/);
+});
+
+test("admin announcements route PUT writes an updated audit log", async () => {
+  const source = await readFile(routePath, "utf8");
+
+  // Bug fix (2026-06-21): PUT was missing an audit-log call.
+  assert.match(source, /export async function PUT/);
+  assert.match(source, /action:\s*"announcement\.updated"/);
+  assert.match(source, /auditDomainWrite/);
+});
+
+test("admin announcements route DELETE writes a deleted audit log", async () => {
+  const source = await readFile(routePath, "utf8");
+
+  // Bug fix (2026-06-21): DELETE was missing an audit-log call.
+  assert.match(source, /export async function DELETE/);
+  assert.match(source, /action:\s*"announcement\.deleted"/);
+  assert.match(source, /auditDomainWrite/);
+});
+
+test("admin announcements route deletes inside the school boundary", async () => {
+  const source = await readFile(routePath, "utf8");
+
+  // Regression check: the DELETE must scope by school_id so an admin from
+  // school A cannot delete an announcement from school B.
+  assert.match(source, /\.eq\("school_id",\s*schoolId\)/);
+});

@@ -1,43 +1,89 @@
 "use client";
 
+import {
+  fetchGatewayRead,
+  fetchGatewayMutation,
+  isGatewayConfigured,
+} from "@/lib/gateway-read-client";
 import { fetchWithOfflineSupport } from "@/lib/offline-fetch";
-import { getClientAccessToken } from "@/lib/supabase-auth-client";
 
 function getCsrfTokenFromCookie(): string | null {
   if (typeof document === "undefined") return null;
-  const value = `; ${document.cookie}`;
-  const parts = value.split(`; csrf-token=`);
-  if (parts.length === 2) {
-    const token = parts.pop()?.split(";").shift() || null;
-    if (!token) {
+  const raw = document.cookie;
+  if (!raw) {
+    console.warn("[CSRF-client] document.cookie is empty");
+    return null;
+  }
+  // Parse cookies robustly: handle spaces, multiple cookies, values with =
+  for (const pair of raw.split(";")) {
+    const idx = pair.indexOf("=");
+    if (idx === -1) continue;
+    const name = pair.substring(0, idx).trim();
+    if (name === "csrf-token") {
+      const value = pair.substring(idx + 1).trim();
+      if (value) return value;
       console.warn(
         "[CSRF-client] Found cookie 'csrf-token' but value was empty",
       );
+      return null;
     }
-    return token;
   }
-  console.warn(
-    "[CSRF-client] No 'csrf-token' cookie found in document.cookie. Available cookies:",
-    document.cookie || "(none)",
-  );
+  console.warn("[CSRF-client] No 'csrf-token' cookie found.");
   return null;
 }
 
 /**
- * Inflight request deduplication for GET requests.
+ * Inflight request deduplication for GET requests to same-origin /api/*.
  * Prevents duplicate parallel fetches for the same URL.
  */
 const inflightGet = new Map<string, Promise<Response>>();
 
-async function dedupedFetch(
-  input: string,
-  init: RequestInit = {},
-): Promise<Response> {
+function buildLocalHeaders(init: RequestInit, method: string): Headers {
+  const headers = new Headers(init.headers || {});
+  if (
+    !headers.has("Content-Type") &&
+    init.body &&
+    typeof init.body === "string" &&
+    method !== "GET"
+  ) {
+    headers.set("Content-Type", "application/json");
+  }
+  // CSRF is required by Vercel middleware on mutations. The gateway client
+  // also injects CSRF on its own path; here we only inject for the local
+  // /api/* fallback branch.
+  const mutatingMethods = ["POST", "PUT", "PATCH", "DELETE"];
+  if (mutatingMethods.includes(method.toUpperCase())) {
+    const csrf = getCsrfTokenFromCookie();
+    if (csrf) headers.set("X-CSRF-Token", csrf);
+  }
+  return headers;
+}
+
+/**
+ * Single fetch entrypoint: prefers the Worker (when NEXT_PUBLIC_GATEWAY_URL
+ * is set), falls through to the same-origin /api/* with CSRF + offline support.
+ */
+export async function adminApiFetch(input: string, init: RequestInit = {}) {
   const method = String(init.method || "GET").toUpperCase();
+
+  if (isGatewayConfigured()) {
+    if (method === "GET" || method === "HEAD") {
+      // Cache API can serve repeat reads.
+      return fetchGatewayRead(input, {
+        ...init,
+        cache: init.cache ?? "default",
+      });
+    }
+    return fetchGatewayMutation(input, init);
+  }
+
+  // Local /api/* fallback.
+  const headers = buildLocalHeaders(init, method);
+
   if (method !== "GET" && method !== "HEAD") {
     return fetchWithOfflineSupport(input, {
       ...init,
-      headers: buildHeaders(init, method),
+      headers,
       cache: init.cache ?? "no-store",
       credentials: "same-origin",
     });
@@ -48,7 +94,7 @@ async function dedupedFetch(
 
   const promise = fetchWithOfflineSupport(input, {
     ...init,
-    headers: buildHeaders(init, method),
+    headers,
     cache: init.cache ?? "no-store",
     credentials: "same-origin",
   }).finally(() => {
@@ -57,36 +103,6 @@ async function dedupedFetch(
 
   inflightGet.set(input, promise);
   return promise;
-}
-
-function buildHeaders(init: RequestInit, method: string): Headers {
-  const headers = new Headers(init.headers || {});
-  if (!headers.has("Content-Type") && init.body) {
-    headers.set("Content-Type", "application/json");
-  }
-  // Add CSRF token for mutating methods
-  const mutatingMethods = ["POST", "PUT", "PATCH", "DELETE"];
-  if (mutatingMethods.includes(method.toUpperCase())) {
-    const csrfToken = getCsrfTokenFromCookie();
-    if (csrfToken) {
-      headers.set("X-CSRF-Token", csrfToken);
-    }
-  }
-  return headers;
-}
-
-export async function adminApiFetch(input: string, init: RequestInit = {}) {
-  const method = String(init.method || "GET").toUpperCase();
-  const headers = buildHeaders(init, method);
-
-  if (!headers.has("Authorization")) {
-    const accessToken = await getClientAccessToken();
-    if (accessToken) {
-      headers.set("Authorization", `Bearer ${accessToken}`);
-    }
-  }
-
-  return dedupedFetch(input, { ...init, headers });
 }
 
 export async function adminApiJson<T = any>(

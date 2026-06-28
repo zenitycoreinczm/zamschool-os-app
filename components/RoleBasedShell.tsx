@@ -25,7 +25,11 @@ const StudentShell = dynamic(() => import("@/components/StudentShell"), {
   loading: shellFallback,
 });
 
-export default function RoleBasedShell({ children }: { children: React.ReactNode }) {
+export default function RoleBasedShell({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const { role, loading, error } = useWorkspaceContext();
 
   if (loading) {
@@ -34,7 +38,12 @@ export default function RoleBasedShell({ children }: { children: React.ReactNode
 
   if (error) {
     return (
-      <div className={cn("grid h-screen w-full place-items-center px-6", ws.canvas)}>
+      <div
+        className={cn(
+          "grid h-screen w-full place-items-center px-6",
+          ws.canvas,
+        )}
+      >
         <Surface variant="elevated" className="max-w-md p-6 text-center">
           <p className="text-sm font-medium text-rose-600">{error}</p>
         </Surface>
@@ -61,7 +70,8 @@ export default function RoleBasedShell({ children }: { children: React.ReactNode
     role === "academic_admin" ||
     role === "hr_admin" ||
     role === "ict_admin" ||
-    role === "discipline_admin"
+    role === "discipline_admin" ||
+    role === "registrar"
   ) {
     return <AdminShell>{children}</AdminShell>;
   }

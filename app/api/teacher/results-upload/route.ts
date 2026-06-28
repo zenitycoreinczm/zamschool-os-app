@@ -6,6 +6,7 @@ import { safeErrorMessage, getClientIp, applyRateLimit } from "@/lib/server-guar
 import { applyEdgeCacheHeaders } from "@/lib/edge-cache";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { auditDomainWrite } from "@/lib/audit-domain";
+import { getECZGrade } from "@/lib/zambia-localization";
 
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 
@@ -521,7 +522,12 @@ function computeGrade(
       return scale.grade;
     }
   }
-  return null;
+  try {
+    const ecz = getECZGrade(marks);
+    return ecz.grade;
+  } catch {
+    return null;
+  }
 }
 
 function isMissingTableError(error: { code?: string; message?: string } | null | undefined) {

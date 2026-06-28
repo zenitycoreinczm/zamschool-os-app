@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { adminApiJson } from "@/lib/admin-browser-api";
 import EventCalendar from "@/components/EventCalendar";
 import { PageHeader } from "@/components/workspace/PageHeader";
+import { Surface } from "@/components/workspace/Surface";
 import { formatDate } from "@/lib/utils";
 
 type EventRow = {
@@ -142,7 +143,7 @@ export default function AppEventsPage() {
         </div>
 
         <div className="space-y-4">
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <Surface variant="default" className="p-5">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-sm font-semibold text-slate-900">Event list</h2>
               <button
@@ -232,18 +233,23 @@ export default function AppEventsPage() {
                 ))
               )}
             </div>
-          </section>
+          </Surface>
         </div>
       </div>
 
       {openForm ? (
-        <div className="fixed inset-0 z-50 bg-slate-950/40 p-4 backdrop-blur-sm">
+        <div
+          className="fixed inset-0 z-50 bg-slate-950/40 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="new-event-heading"
+        >
           <div className="mx-auto grid min-h-full max-w-lg place-items-center">
-            <div className="w-full rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <Surface variant="elevated" className="w-full p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-violet-600">New event</p>
-                  <h2 className="mt-1 text-lg font-semibold text-slate-900">Create event</h2>
+                  <h2 id="new-event-heading" className="mt-1 text-lg font-semibold text-slate-900">Create event</h2>
                 </div>
                 <button type="button" onClick={() => setOpenForm(false)} className="grid h-9 w-9 place-items-center rounded-xl bg-slate-100 text-slate-600">
                   <X className="h-4 w-4" />
@@ -298,19 +304,24 @@ export default function AppEventsPage() {
                   Create event
                 </button>
               </div>
-            </div>
+            </Surface>
           </div>
         </div>
       ) : null}
 
       {selectedEvent ? (
-        <div className="fixed inset-0 z-50 bg-slate-950/40 p-4 backdrop-blur-sm">
+        <div
+          className="fixed inset-0 z-50 bg-slate-950/40 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="event-details-heading"
+        >
           <div className="mx-auto grid min-h-full max-w-lg place-items-center">
-            <div className="w-full rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <Surface variant="elevated" className="w-full p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-violet-600">Event details</p>
-                  <h2 className="mt-1 text-lg font-semibold text-slate-900">{selectedEvent.title}</h2>
+                  <h2 id="event-details-heading" className="mt-1 text-lg font-semibold text-slate-900">{selectedEvent.title}</h2>
                 </div>
                 <button type="button" onClick={() => setSelectedEvent(null)} className="grid h-9 w-9 place-items-center rounded-xl bg-slate-100 text-slate-600">
                   <X className="h-4 w-4" />
@@ -350,7 +361,7 @@ export default function AppEventsPage() {
                   <Trash2 className="h-4 w-4" /> Delete
                 </button>
               </div>
-            </div>
+            </Surface>
           </div>
         </div>
       ) : null}

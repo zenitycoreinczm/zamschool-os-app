@@ -12,7 +12,9 @@ export const ACCOUNT_PROFILE_ROLES = [
   "HR_ADMIN",
   "ICT_ADMIN",
   "DISCIPLINE_ADMIN",
+  "REGISTRAR",
   "TEACHER",
   "STUDENT",
   "PARENT",
+  "SUPER_ADMIN",
 ] as const satisfies readonly KnownRole[];

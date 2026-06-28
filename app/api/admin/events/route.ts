@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { z } from "zod";
-import { applyRateLimit, getClientIp, parseJsonWithSchema, safeErrorMessage } from "@/lib/server-guards";
+import {
+  applyRateLimit,
+  getClientIp,
+  parseJsonWithSchema,
+  safeErrorMessage,
+} from "@/lib/server-guards";
 import { requireAdminContext } from "@/lib/server-auth";
-import { EDGE_CACHE } from "@/lib/edge-cache";
+import { requireFeatureAccess } from "@/lib/feature-permissions";
+import { auditDomainWrite } from "@/lib/audit-domain";
+import { applyEdgeCacheHeaders } from "@/lib/edge-cache";
 import {
   normalizeAudienceForStorage,
   normalizeTargetRoleForResponse,
@@ -39,10 +46,15 @@ export async function GET(req: Request) {
     if (!access.ok) return access.response;
     const { schoolId } = access.context;
     if (!schoolId) {
-      return NextResponse.json({ error: "No school linked to this account" }, { status: 403 });
+      return NextResponse.json(
+        { error: "No school linked to this account" },
+        { status: 403 },
+      );
     }
     const { searchParams } = new URL(req.url);
-    const targetRole = normalizeTargetRoleForResponse(searchParams.get("targetRole"));
+    const targetRole = normalizeTargetRoleForResponse(
+      searchParams.get("targetRole"),
+    );
     const targetClassId = searchParams.get("targetClassId");
     const upcomingOnly = searchParams.get("upcomingOnly") === "true";
 
@@ -57,17 +69,30 @@ export async function GET(req: Request) {
     const normalized = normalizeEventRows(data || []).filter((row) => {
       if (targetRole && row.target_role !== targetRole) return false;
       if (targetClassId && row.target_class_id !== targetClassId) return false;
-      if (upcomingOnly && row.event_date && row.event_date < new Date().toISOString().slice(0, 10)) return false;
+      if (
+        upcomingOnly &&
+        row.event_date &&
+        row.event_date < new Date().toISOString().slice(0, 10)
+      )
+        return false;
       return true;
     });
 
-    normalized.sort((left, right) => String(left.event_date || "").localeCompare(String(right.event_date || "")));
+    normalized.sort((left, right) =>
+      String(left.event_date || "").localeCompare(
+        String(right.event_date || ""),
+      ),
+    );
 
-    return NextResponse.json({ success: true, data: normalized }, {
-      headers: { "Cache-Control": EDGE_CACHE.privateRead },
-    });
+    return applyEdgeCacheHeaders(
+      NextResponse.json({ success: true, data: normalized }),
+      "eventsRead",
+    );
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to fetch events") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to fetch events") },
+      { status: 500 },
+    );
   }
 }
 
@@ -75,9 +100,18 @@ export async function POST(req: Request) {
   try {
     const access = await requireAdminContext(req);
     if (!access.ok) return access.response;
+    const feature = await requireFeatureAccess(
+      access.context,
+      "announcements",
+      "create",
+    );
+    if (!feature.ok) return feature.response;
     const { schoolId, userId } = access.context;
     if (!schoolId) {
-      return NextResponse.json({ error: "No school linked to this account" }, { status: 403 });
+      return NextResponse.json(
+        { error: "No school linked to this account" },
+        { status: 403 },
+      );
     }
     const ip = getClientIp(req);
     const rate = await applyRateLimit({
@@ -88,17 +122,31 @@ export async function POST(req: Request) {
     if (!rate.allowed) {
       return NextResponse.json(
         { error: "Too many requests. Please try again shortly." },
-        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } }
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
       );
     }
 
     const body = await parseJsonWithSchema(req, createEventSchema);
     const payload = buildEventPayload({ schoolId, userId, body });
     const data = await safeInsertWithMissingColumnRetry("events", payload);
+    const normalized = normalizeEventRow(data);
 
-    return NextResponse.json({ success: true, data: normalizeEventRow(data) });
+    await auditDomainWrite({
+      schoolId,
+      userId,
+      action: "events.create",
+      entityType: "event",
+      entityId: data.id,
+      newData: normalized,
+      ipAddress: getClientIp(req),
+    });
+
+    return NextResponse.json({ success: true, data: normalized });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to create event") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to create event") },
+      { status: 500 },
+    );
   }
 }
 
@@ -106,9 +154,18 @@ export async function PUT(req: Request) {
   try {
     const access = await requireAdminContext(req);
     if (!access.ok) return access.response;
+    const feature = await requireFeatureAccess(
+      access.context,
+      "announcements",
+      "update",
+    );
+    if (!feature.ok) return feature.response;
     const { schoolId } = access.context;
     if (!schoolId) {
-      return NextResponse.json({ error: "No school linked to this account" }, { status: 403 });
+      return NextResponse.json(
+        { error: "No school linked to this account" },
+        { status: 403 },
+      );
     }
     const ip = getClientIp(req);
     const rate = await applyRateLimit({
@@ -119,17 +176,41 @@ export async function PUT(req: Request) {
     if (!rate.allowed) {
       return NextResponse.json(
         { error: "Too many requests. Please try again shortly." },
-        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } }
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
       );
     }
 
     const body = await parseJsonWithSchema(req, updateEventSchema);
-    const payload = buildEventPayload({ schoolId, userId: null, body, includeRequired: false });
-    const data = await safeUpdateWithMissingColumnRetry("events", body.id, schoolId, payload);
+    const payload = buildEventPayload({
+      schoolId,
+      userId: null,
+      body,
+      includeRequired: false,
+    });
+    const data = await safeUpdateWithMissingColumnRetry(
+      "events",
+      body.id,
+      schoolId,
+      payload,
+    );
+    const normalized = normalizeEventRow(data);
 
-    return NextResponse.json({ success: true, data: normalizeEventRow(data) });
+    await auditDomainWrite({
+      schoolId,
+      userId: access.context.userId,
+      action: "events.update",
+      entityType: "event",
+      entityId: body.id,
+      newData: normalized,
+      ipAddress: getClientIp(req),
+    });
+
+    return NextResponse.json({ success: true, data: normalized });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to update event") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to update event") },
+      { status: 500 },
+    );
   }
 }
 
@@ -137,15 +218,27 @@ export async function DELETE(req: Request) {
   try {
     const access = await requireAdminContext(req);
     if (!access.ok) return access.response;
+    const feature = await requireFeatureAccess(
+      access.context,
+      "announcements",
+      "delete",
+    );
+    if (!feature.ok) return feature.response;
     const { schoolId } = access.context;
     if (!schoolId) {
-      return NextResponse.json({ error: "No school linked to this account" }, { status: 403 });
+      return NextResponse.json(
+        { error: "No school linked to this account" },
+        { status: 403 },
+      );
     }
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 
     if (!id) {
-      return NextResponse.json({ error: "Event ID is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Event ID is required" },
+        { status: 400 },
+      );
     }
 
     const { error } = await supabaseAdmin
@@ -156,9 +249,21 @@ export async function DELETE(req: Request) {
 
     if (error) throw error;
 
+    await auditDomainWrite({
+      schoolId,
+      userId: access.context.userId,
+      action: "events.delete",
+      entityType: "event",
+      entityId: id,
+      ipAddress: getClientIp(req),
+    });
+
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to delete event") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to delete event") },
+      { status: 500 },
+    );
   }
 }
 
@@ -169,13 +274,21 @@ function buildEventPayload(input: {
   includeRequired?: boolean;
 }) {
   const includeRequired = input.includeRequired !== false;
-  const eventDate = "eventDate" in input.body && input.body.eventDate ? input.body.eventDate : undefined;
-  const startTime = "startTime" in input.body ? input.body.startTime || undefined : undefined;
-  const endTime = "endTime" in input.body ? input.body.endTime || undefined : undefined;
+  const eventDate =
+    "eventDate" in input.body && input.body.eventDate
+      ? input.body.eventDate
+      : undefined;
+  const startTime =
+    "startTime" in input.body ? input.body.startTime || undefined : undefined;
+  const endTime =
+    "endTime" in input.body ? input.body.endTime || undefined : undefined;
 
   return compactRecord({
     ...(includeRequired ? { school_id: input.schoolId } : {}),
-    title: "title" in input.body && input.body.title !== undefined ? input.body.title.trim() : undefined,
+    title:
+      "title" in input.body && input.body.title !== undefined
+        ? input.body.title.trim()
+        : undefined,
     description:
       "description" in input.body && input.body.description !== undefined
         ? input.body.description.trim() || null
@@ -191,10 +304,15 @@ function buildEventPayload(input: {
       "targetRole" in input.body
         ? normalizeTargetRoleForStorage(input.body.targetRole)
         : undefined,
-    target_class_id: "targetClassId" in input.body ? input.body.targetClassId || null : undefined,
+    target_class_id:
+      "targetClassId" in input.body
+        ? input.body.targetClassId || null
+        : undefined,
     created_by: includeRequired ? input.userId : undefined,
     start_date: eventDate ? `${eventDate}T${startTime || "00:00"}` : undefined,
-    end_date: eventDate ? `${eventDate}T${endTime || startTime || "23:59"}` : undefined,
+    end_date: eventDate
+      ? `${eventDate}T${endTime || startTime || "23:59"}`
+      : undefined,
     audience:
       "targetRole" in input.body
         ? normalizeAudienceForStorage(input.body.targetRole)
@@ -214,23 +332,34 @@ function normalizeEventRow(row: any) {
     event_date: eventDate,
     start_time: row?.start_time || sliceTime(row?.start_date),
     end_time: row?.end_time || sliceTime(row?.end_date),
-    target_role: normalizeTargetRoleForResponse(row?.target_role ?? row?.audience),
+    target_role: normalizeTargetRoleForResponse(
+      row?.target_role ?? row?.audience,
+    ),
     target_class_id: row?.target_class_id ?? null,
   };
 }
 
 function extractMissingColumn(message?: string) {
   if (!message) return null;
-  const match = message.match(/column ([^.]+\.)?([a-zA-Z0-9_]+) does not exist/i);
+  const match = message.match(
+    /column ([^.]+\.)?([a-zA-Z0-9_]+) does not exist/i,
+  );
   if (match?.[2]) return match[2];
   const missing = message.match(/Could not find the '([^']+)' column/i);
   return missing?.[1] || null;
 }
 
-async function safeInsertWithMissingColumnRetry(table: string, payload: Record<string, any>) {
+async function safeInsertWithMissingColumnRetry(
+  table: string,
+  payload: Record<string, any>,
+) {
   let working = { ...payload };
   for (let index = 0; index < 12; index += 1) {
-    const result = await supabaseAdmin.from(table).insert(working).select().single();
+    const result = await supabaseAdmin
+      .from(table)
+      .insert(working)
+      .select()
+      .single();
     if (!result.error) return result.data;
 
     const missingColumn = extractMissingColumn(result.error.message);
@@ -241,7 +370,12 @@ async function safeInsertWithMissingColumnRetry(table: string, payload: Record<s
   throw new Error(`Failed to insert ${table}`);
 }
 
-async function safeUpdateWithMissingColumnRetry(table: string, id: string, schoolId: string, payload: Record<string, any>) {
+async function safeUpdateWithMissingColumnRetry(
+  table: string,
+  id: string,
+  schoolId: string,
+  payload: Record<string, any>,
+) {
   let working = { ...payload };
   for (let index = 0; index < 12; index += 1) {
     const result = await supabaseAdmin
@@ -273,6 +407,6 @@ function sliceTime(value: string | null | undefined) {
 
 function compactRecord(record: Record<string, any>) {
   return Object.fromEntries(
-    Object.entries(record).filter(([, value]) => value !== undefined)
+    Object.entries(record).filter(([, value]) => value !== undefined),
   );
 }

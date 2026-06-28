@@ -13,7 +13,13 @@ export type { FeaturePerms } from "@/lib/permission-group-defaults";
 
 const ROLE_PERMISSION_FALLBACK = buildRolePermissionFallback();
 
-const schoolsWithDbPermissions = new Map<string, boolean>();
+interface SchoolDbCacheEntry {
+  value: boolean;
+  ts: number;
+}
+
+const schoolsWithDbPermissions = new Map<string, SchoolDbCacheEntry>();
+const SCHOOLS_DB_CACHE_TTL_MS = 120_000; // 2 minutes
 
 /* ── TTL cache for resolved role permissions ── */
 
@@ -52,7 +58,9 @@ export function clearPermissionCache(schoolId?: string) {
 /** True when the school has permission_groups (seeded or customized). */
 async function schoolUsesDbPermissions(schoolId: string): Promise<boolean> {
   const cached = schoolsWithDbPermissions.get(schoolId);
-  if (cached !== undefined) return cached;
+  if (cached && Date.now() - cached.ts < SCHOOLS_DB_CACHE_TTL_MS) {
+    return cached.value;
+  }
 
   const { count, error } = await supabaseAdmin
     .from("permission_groups")
@@ -60,13 +68,16 @@ async function schoolUsesDbPermissions(schoolId: string): Promise<boolean> {
     .eq("school_id", schoolId);
 
   if (error) {
-    console.error("[feature-permissions] permission_groups lookup failed", error.message);
-    schoolsWithDbPermissions.set(schoolId, false);
+    console.error(
+      "[feature-permissions] permission_groups lookup failed",
+      error.message,
+    );
+    schoolsWithDbPermissions.set(schoolId, { value: false, ts: Date.now() });
     return false;
   }
 
   const usesDb = (count ?? 0) > 0;
-  schoolsWithDbPermissions.set(schoolId, usesDb);
+  schoolsWithDbPermissions.set(schoolId, { value: usesDb, ts: Date.now() });
   return usesDb;
 }
 
@@ -102,7 +113,9 @@ async function resolveRolePermissions(schoolId: string, role: string) {
 
     const { data: features } = await supabaseAdmin
       .from("permission_features")
-      .select("feature_key, can_create, can_read, can_update, can_delete, scope")
+      .select(
+        "feature_key, can_create, can_read, can_update, can_delete, scope",
+      )
       .eq("school_id", schoolId)
       .in("group_id", groupIds);
 
@@ -123,7 +136,10 @@ async function resolveRolePermissions(schoolId: string, role: string) {
   } catch (err) {
     // Stale-on-error: return expired cache if available, otherwise empty
     if (cached) {
-      console.error(`[feature-permissions] DB error, returning stale cache for ${key}`, err);
+      console.error(
+        `[feature-permissions] DB error, returning stale cache for ${key}`,
+        err,
+      );
       return cached.value;
     }
     console.error(`[feature-permissions] DB error, no cache for ${key}`, err);
@@ -142,10 +158,10 @@ async function resolveRolePermissions(schoolId: string, role: string) {
 export async function checkFeaturePermission(
   context: { schoolId: string | null; role: string },
   feature: string,
-  action: FeatureAction
+  action: FeatureAction,
 ): Promise<boolean> {
   const normalizedRole = normalizeRole(context.role);
-  if (normalizedRole === "SUPER_ADMIN" || normalizedRole === "PRINCIPAL") return true;
+  if (normalizedRole === "SUPER_ADMIN") return true;
   if (!context.schoolId) return false;
   if (!normalizedRole) return false;
 
@@ -156,7 +172,9 @@ export async function checkFeaturePermission(
 
   const featurePerms =
     permissions[feature] ??
-    (!usesDb ? ROLE_PERMISSION_FALLBACK[normalizedRole as KnownRole]?.[feature] : undefined);
+    (!usesDb
+      ? ROLE_PERMISSION_FALLBACK[normalizedRole as KnownRole]?.[feature]
+      : undefined);
 
   if (!featurePerms) return false;
 
@@ -185,7 +203,7 @@ export async function checkFeaturePermission(
 export async function requireFeatureAccess(
   context: { schoolId: string | null; role: string },
   feature: string,
-  action: FeatureAction
+  action: FeatureAction,
 ): Promise<{ ok: true } | { ok: false; response: NextResponse }> {
   const allowed = await checkFeaturePermission(context, feature, action);
   if (!allowed) {
@@ -193,7 +211,7 @@ export async function requireFeatureAccess(
       ok: false,
       response: NextResponse.json(
         { error: `Insufficient permissions to ${action} ${feature}` },
-        { status: 403 }
+        { status: 403 },
       ),
     };
   }

@@ -15,6 +15,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { primaryButton, secondaryButton } from "@/lib/workspace-design";
+import { adminApiJson } from "@/lib/admin-browser-api";
 
 type DisciplineRecord = {
   id: string;
@@ -67,21 +68,10 @@ type Student = {
   class: { name: string } | null;
 };
 
-const SEVERITY_LABELS: Record<number, { label: string; color: string }> = {
-  1: { label: "Low", color: "bg-blue-100 text-blue-700" },
-  2: { label: "Minor", color: "bg-yellow-100 text-yellow-700" },
-  3: { label: "Moderate", color: "bg-orange-100 text-orange-700" },
-  4: { label: "Serious", color: "bg-red-100 text-red-700" },
-  5: { label: "Critical", color: "bg-rose-100 text-rose-700" },
-};
+import { SEVERITY_LEVELS, DISCIPLINE_STATUS } from "@/lib/discipline-tokens";
 
-const STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  open: { label: "Open", color: "bg-amber-100 text-amber-700" },
-  investigating: { label: "Investigating", color: "bg-blue-100 text-blue-700" },
-  resolved: { label: "Resolved", color: "bg-emerald-100 text-emerald-700" },
-  escalated: { label: "Escalated", color: "bg-red-100 text-red-700" },
-  closed: { label: "Closed", color: "bg-slate-100 text-slate-600" },
-};
+const SEVERITY_LABELS = SEVERITY_LEVELS;
+const STATUS_LABELS = DISCIPLINE_STATUS;
 
 export default function DisciplineAdminPage() {
   const [records, setRecords] = useState<DisciplineRecord[]>([]);
@@ -102,7 +92,7 @@ export default function DisciplineAdminPage() {
   const [newCategoryId, setNewCategoryId] = useState("");
   const [newSeverity, setNewSeverity] = useState("1");
   const [newIncidentDate, setNewIncidentDate] = useState(
-    new Date().toISOString().split("T")[0]
+    new Date().toISOString().split("T")[0],
   );
   const [newLocation, setNewLocation] = useState("");
 
@@ -114,12 +104,13 @@ export default function DisciplineAdminPage() {
       if (filterSeverity) params.set("severity", filterSeverity);
       params.set("limit", "100");
 
-      const [recordsRes, statsRes, categoriesRes, studentsRes] = await Promise.all([
-        fetch(`/api/discipline/records?${params}`).then((r) => r.json()),
-        fetch("/api/discipline/stats").then((r) => r.json()),
-        fetch("/api/discipline/categories").then((r) => r.json()),
-        fetch("/api/admin/users?role=student&limit=500").then((r) => r.json()),
-      ]);
+      const [recordsRes, statsRes, categoriesRes, studentsRes] =
+        await Promise.all([
+          adminApiJson(`/api/discipline/records?${params}`),
+          adminApiJson("/api/discipline/stats"),
+          adminApiJson("/api/discipline/categories"),
+          adminApiJson("/api/admin/users?role=student&limit=500"),
+        ]);
 
       setRecords(recordsRes.data || []);
       setStats(statsRes.data || null);
@@ -128,9 +119,12 @@ export default function DisciplineAdminPage() {
         (studentsRes.data || []).map((s: any) => ({
           id: s.id,
           student_number: s.student_number || s.studentNumber || null,
-          profile: s.profile || { first_name: s.firstName, last_name: s.lastName },
+          profile: s.profile || {
+            first_name: s.firstName,
+            last_name: s.lastName,
+          },
           class: s.class || { name: s.className },
-        }))
+        })),
       );
     } catch {
       toast.error("Failed to load discipline data");
@@ -150,9 +144,8 @@ export default function DisciplineAdminPage() {
     }
     setCreating(true);
     try {
-      const res = await fetch("/api/discipline/records", {
+      await adminApiJson("/api/discipline/records", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           studentId: newStudentId,
           title: newTitle.trim(),
@@ -163,11 +156,6 @@ export default function DisciplineAdminPage() {
           incidentLocation: newLocation.trim() || undefined,
         }),
       });
-      const body = await res.json();
-      if (!res.ok) {
-        toast.error(body.error || "Failed to create record");
-        return;
-      }
       toast.success("Discipline record created");
       setShowCreateForm(false);
       setNewStudentId("");
@@ -200,7 +188,10 @@ export default function DisciplineAdminPage() {
 
   const getStudentName = (student: DisciplineRecord["student"]) => {
     if (!student) return "Unknown";
-    return [student.first_name, student.last_name].filter(Boolean).join(" ") || "Student";
+    return (
+      [student.first_name, student.last_name].filter(Boolean).join(" ") ||
+      "Student"
+    );
   };
 
   if (loading) {
@@ -208,7 +199,9 @@ export default function DisciplineAdminPage() {
       <div className="mx-auto max-w-6xl px-4 py-8">
         <div className="flex items-center justify-center gap-3 py-20">
           <Loader2 className="h-5 w-5 animate-spin text-sky-600" />
-          <span className="text-sm text-slate-500">Loading discipline data...</span>
+          <span className="text-sm text-slate-500">
+            Loading discipline data...
+          </span>
         </div>
       </div>
     );
@@ -218,7 +211,9 @@ export default function DisciplineAdminPage() {
     <div className="mx-auto max-w-6xl px-4 py-8">
       <div className="mb-8 flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Discipline Management</h1>
+          <h1 className="text-2xl font-bold text-slate-900">
+            Discipline Management
+          </h1>
           <p className="mt-1 text-sm text-slate-500">
             Track incidents, manage consequences, and monitor student conduct
           </p>
@@ -264,10 +259,14 @@ export default function DisciplineAdminPage() {
       {/* Create Form */}
       {showCreateForm && (
         <div className="mb-6 rounded-xl border border-sky-200 bg-sky-50 p-6">
-          <h3 className="mb-4 font-semibold text-sky-900">New Discipline Record</h3>
+          <h3 className="mb-4 font-semibold text-sky-900">
+            New Discipline Record
+          </h3>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Student *</label>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Student *
+              </label>
               <select
                 value={newStudentId}
                 onChange={(e) => setNewStudentId(e.target.value)}
@@ -285,7 +284,9 @@ export default function DisciplineAdminPage() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Title *</label>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Title *
+              </label>
               <input
                 type="text"
                 value={newTitle}
@@ -295,7 +296,9 @@ export default function DisciplineAdminPage() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Category</label>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Category
+              </label>
               <select
                 value={newCategoryId}
                 onChange={(e) => setNewCategoryId(e.target.value)}
@@ -310,7 +313,9 @@ export default function DisciplineAdminPage() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Severity</label>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Severity
+              </label>
               <select
                 value={newSeverity}
                 onChange={(e) => setNewSeverity(e.target.value)}
@@ -324,7 +329,9 @@ export default function DisciplineAdminPage() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Incident Date</label>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Incident Date
+              </label>
               <input
                 type="date"
                 value={newIncidentDate}
@@ -333,7 +340,9 @@ export default function DisciplineAdminPage() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Location</label>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Location
+              </label>
               <input
                 type="text"
                 value={newLocation}
@@ -343,7 +352,9 @@ export default function DisciplineAdminPage() {
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-sm font-medium text-slate-700">Description</label>
+              <label className="mb-1 block text-sm font-medium text-slate-700">
+                Description
+              </label>
               <textarea
                 value={newDescription}
                 onChange={(e) => setNewDescription(e.target.value)}
@@ -354,11 +365,22 @@ export default function DisciplineAdminPage() {
             </div>
           </div>
           <div className="mt-4 flex gap-3">
-            <button onClick={handleCreate} disabled={creating} className={primaryButton("")}>
-              {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            <button
+              onClick={handleCreate}
+              disabled={creating}
+              className={primaryButton("")}
+            >
+              {creating ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
               Create Record
             </button>
-            <button onClick={() => setShowCreateForm(false)} className={secondaryButton("")}>
+            <button
+              onClick={() => setShowCreateForm(false)}
+              className={secondaryButton("")}
+            >
               Cancel
             </button>
           </div>
@@ -384,7 +406,9 @@ export default function DisciplineAdminPage() {
         >
           <option value="">All Status</option>
           {Object.entries(STATUS_LABELS).map(([key, { label }]) => (
-            <option key={key} value={key}>{label}</option>
+            <option key={key} value={key}>
+              {label}
+            </option>
           ))}
         </select>
         <select
@@ -394,13 +418,15 @@ export default function DisciplineAdminPage() {
         >
           <option value="">All Severity</option>
           {[1, 2, 3, 4, 5].map((s) => (
-            <option key={s} value={s}>{s} - {SEVERITY_LABELS[s].label}</option>
+            <option key={s} value={s}>
+              {s} - {SEVERITY_LABELS[s].label}
+            </option>
           ))}
         </select>
       </div>
 
       {/* Records Table */}
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-slate-600">
             <tr>
@@ -416,14 +442,19 @@ export default function DisciplineAdminPage() {
           <tbody className="divide-y divide-slate-100">
             {filteredRecords.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-slate-500">
+                <td
+                  colSpan={7}
+                  className="px-4 py-10 text-center text-slate-500"
+                >
                   No discipline records found.
                 </td>
               </tr>
             ) : (
               filteredRecords.map((record) => {
-                const severity = SEVERITY_LABELS[record.severity] || SEVERITY_LABELS[1];
-                const status = STATUS_LABELS[record.status] || STATUS_LABELS.open;
+                const severity =
+                  SEVERITY_LABELS[record.severity] || SEVERITY_LABELS[1];
+                const status =
+                  STATUS_LABELS[record.status] || STATUS_LABELS.open;
                 return (
                   <tr key={record.id} className="hover:bg-slate-50">
                     <td className="px-4 py-3">
@@ -437,21 +468,35 @@ export default function DisciplineAdminPage() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="font-medium text-slate-700">{record.title}</div>
+                      <div className="font-medium text-slate-700">
+                        {record.title}
+                      </div>
                       {record.incident_location && (
-                        <div className="text-xs text-slate-500">{record.incident_location}</div>
+                        <div className="text-xs text-slate-500">
+                          {record.incident_location}
+                        </div>
                       )}
                     </td>
                     <td className="px-4 py-3 text-slate-600">
                       {record.category?.name || "—"}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={cn("inline-flex rounded-full px-2 py-1 text-xs font-medium", severity.color)}>
+                      <span
+                        className={cn(
+                          "inline-flex rounded-full px-2 py-1 text-xs font-medium",
+                          severity.color,
+                        )}
+                      >
                         {severity.label}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={cn("inline-flex rounded-full px-2 py-1 text-xs font-medium", status.color)}>
+                      <span
+                        className={cn(
+                          "inline-flex rounded-full px-2 py-1 text-xs font-medium",
+                          status.color,
+                        )}
+                      >
                         {status.label}
                       </span>
                     </td>
@@ -476,15 +521,21 @@ export default function DisciplineAdminPage() {
       {/* Top Students */}
       {stats && stats.topStudents.length > 0 && (
         <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="mb-3 font-semibold text-slate-900">Frequent Incidents (30 days)</h3>
+          <h3 className="mb-3 font-semibold text-slate-900">
+            Frequent Incidents (30 days)
+          </h3>
           <div className="space-y-2">
             {stats.topStudents.map((s) => (
               <div
                 key={s.studentId}
                 className="flex items-center justify-between rounded-lg border border-amber-100 bg-amber-50 px-3 py-2"
               >
-                <span className="text-sm font-medium text-slate-800">{s.name}</span>
-                <span className="text-sm font-bold text-amber-700">{s.count} incident(s)</span>
+                <span className="text-sm font-medium text-slate-800">
+                  {s.name}
+                </span>
+                <span className="text-sm font-bold text-amber-700">
+                  {s.count} incident(s)
+                </span>
               </div>
             ))}
           </div>

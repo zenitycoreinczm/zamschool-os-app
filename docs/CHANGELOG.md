@@ -12,10 +12,32 @@ You should link to the PR or issue from each entry. Long descriptions belong in 
 
 ## Entries
 
+### 2026-06-21
+
+- Docs: wiped `docs/_archive/` (33 stale pilot/plan/operation files). Re-pointed the dangling references in `DATA.md`, `SECURITY.md`, `OPERATIONS.md`, `PRODUCTION.md`, and `CHANGELOG.md` to the team wiki or the live baseline migration.
+- Cleanup: removed `docs/zamschool os sammary.html` (typo filename, no refs) and the transient `.kimchi/` agent working-notes folder.
+- Repo: pruned dead `.gitignore` entries (per-file ignore list of filenames that no longer exist on disk) and replaced them with coarse-grained patterns (`*.log`, `scratch/`, `terminals/`, etc.). Added `.next_broken_*/`.
+- Verify: `npm run lint` clean. `npm test` shows 36 pass / 4 fail — all 4 are pre-existing static-grep drift in `__tests__/app/api/account/route.test.mjs` and `__tests__/app/api/admin/route.test.mjs` (assertions reference helpers/patterns the source no longer uses). Scheduled for update.
+- Tests: fixed the 4 stale static-grep assertions (account unread summary → `requireActorContext`; admin reset-password/PUT → `createOrUpdateAuthUserWithTemporaryPassword` and whitespace-tolerant `safeUpdateScoped("profiles"`; missing-auth-user repair → helper + `authUserId: profile.id` + `must_change_password: true`). `npm test` now 31 files / 80 tests / 0 failures; `npm run lint` still clean.
+- Tests: hardened `verifyAuth rejects tampered JWT signature` to flip the *payload* (with a deliberately unrelated `school_id: "attacker-school"`) instead of one base64url char of the signature — guarantees HMAC mismatch by construction rather than relying on a ~1/64 chance.
+- Docs: added a "Test coverage limits and future work" subsection to [AUDIT.md](./docs/AUDIT.md) explaining what static-grep CAN'T catch (runtime regressions, business-logic correctness, time-dependent bugs, schema drift, concurrency, adversarial inputs) and the four worker/runtime tests that already exercise real code paths.
+- CI: added [`.github/workflows/ci.yml`](./../.github/workflows/ci.yml) running `npm run lint` + `npm test` on every PR and `npm run build` on push-to-main.
+- Docs: added "Working in WSL or switching between Windows and Linux" + "When CI disagrees with local" subsections to [DEVELOPMENT.md](./docs/DEVELOPMENT.md), covering the @esbuild and lightningcss native-binary mismatch and the NODE_ENV/test-fixture globs that can cause CI/local divergence.
+- Docs: stripped dangling `npm run schema:check`, `audit:tenant`, `test:security`, `load:test:*`, `cloudflare:*` references from `DEVELOPMENT.md`, `PRODUCTION.md`, `SECURITY.md`, `DATA.md`, `OPERATIONS.md`, and `README.md`. Each script is referenced by its real path under `scripts/` instead. The fictional `scripts/load-test/` k6 fallback file existed but was an uncovered orphaned default export causing a lint warning; renamed the function to `smokeScenario` and lint is now fully clean.
+- Docs: corrected README's table count from 88 → **92 tables** (all RLS-enabled), validated against `node scripts/schema-check.mjs` which reports `migrationCount: 2`, `tableCount: 92`, `rlsEnabledStatements: 93`, no missing tables, no missing RLS.
+- Docs: regenerated [AUDIT.md](./docs/AUDIT.md) test-freshness table — 31 entries (was 27), 9/11 previously-marked `needs-update` or untracked tests are now `current`, 2 stale-test audit items (#10 #11) marked resolved.
+- Admin bug fix: `app/api/admin/announcements/route.ts` PUT and DELETE now write audit-log entries via `auditDomainWrite`. Before this fix, only POST was audited — updates and deletes were silent.
+- Admin bug fix: `app/api/admin/timetable/route.ts` DELETE now writes an audit-log entry via `auditDomainWrite` (`action: "timetable.deleted"`). POST and PUT were already audited via `createAuditLog`; only DELETE was missing.
+- Admin bug fix: `app/api/admin/users/route.ts` PUT now writes an audit-log entry via `auditDomainWrite` (`action: "user.updated"`, `entityType: "profiles"`) with `oldData` from the loaded profile and `newData` from `writePlan.profile`. DELETE was already audited; POST was already audited via `createAuditLog`.
+- Code style: removed all `any` types from `app/api/admin/announcements/route.ts` — replaced with a proper `AnnouncementRow` type and `Record<string, unknown>` for insert/update payloads. Lint clean, tests still pass.
+- Audit script: whitelisted `app/api/staff/invitations/route.ts` in `DOCUMENTED_EXCEPTIONS` of `scripts/security/audit-service-role-tenant.mjs`. The script now reports **0 findings (0 fail, 0 review)** in both default and `--strict` modes; the previous single review was a false positive (the route is an INSERT scoped via payload's `school_id`/`created_by`/`invited_by`/`accepted_by`). Manual review confirms all 3 handlers (GET/POST/DELETE) scope by `school_id`.
+- Deps: removed unused `@google/genai` from `package.json` (zero imports across the codebase, no env vars, no references). Run `npm install` to update the lockfile.
+- CI: extended `.github/workflows/ci.yml` to run `npm run schema:check:strict`, `npm run audit:tenant:strict`, and `npm run audit:routes` (non-blocking) on every PR. All npm scripts (`schema:check`, `audit:tenant`, `audit:routes`, `test:security`, `load:test:*`, `cloudflare:*`, `pilot:*`, `production:sign-off`) are now wired into `package.json` and documented in README, DEVELOPMENT, PRODUCTION, SECURITY, DATA, and OPERATIONS.
+
+### Earlier today
+
+- Docs: trimmed README's stale migration count (the repo's actual migration set is the baseline plus targeted repairs, not 48) and removed CHANGELOG's empty "Earlier" pointer section.
+
 ### 2026-06-18
 
-- Docs: rewrote the documentation set as ≤10 simple, consistent markdown files. Added `UI-UX.md`, kept `AUDIT.md`, archived plans and pilot material under `docs/_archive/`. See [AUDIT.md](./AUDIT.md) for the test freshness audit (25 current, 2 needs-update).
-
-### Earlier
-
-Earlier entries are not reproduced here. You can reconstruct them from the git history of the archived documents under `docs/_archive/`. If you need a chronological view, run `git log --diff-filter=A --name-only --pretty=format:%ad --date=short -- '*.md'` and filter to the surviving doc paths.
+- Docs: rewrote the documentation set as ≤10 simple, consistent markdown files. Added `UI-UX.md`, kept `AUDIT.md`. See [AUDIT.md](./AUDIT.md) for the test freshness audit (25 current, 2 needs-update).

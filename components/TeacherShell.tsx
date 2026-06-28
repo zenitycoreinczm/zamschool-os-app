@@ -3,18 +3,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ProfileAvatarImage } from "@/components/ProfileAvatarImage";
+import { getDisplayInitials } from "@/lib/display-initials";
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import {
-  GraduationCap,
-  LayoutDashboard,
-  LogOut,
-  Menu,
-  MessageSquare,
-  Settings,
-  Users,
-  X,
-} from "lucide-react";
+import { LogOut, Menu, X } from "lucide-react";
 
 import { WorkspaceInboxCenter } from "@/components/inbox/WorkspaceInboxCenter";
 import {
@@ -23,6 +15,7 @@ import {
 } from "@/components/TeacherWorkspaceProvider";
 import { WorkspaceNavMenu } from "@/components/workspace/WorkspaceNavMenu";
 import { WorkspaceGlobalSearch } from "@/components/workspace/WorkspaceGlobalSearch";
+import { MobileDock } from "@/components/workspace/MobileDock";
 import { navItemsToWorkspacePages } from "@/lib/workspace-search";
 import {
   buildTeacherPortalDock,
@@ -111,6 +104,12 @@ function TeacherShellContent({ children }: { children: React.ReactNode }) {
 
   return (
     <div className={cn("flex h-screen overflow-hidden", ws.canvas)}>
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-workspace-md focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-slate-900 focus:shadow-workspace-md"
+      >
+        Skip to content
+      </a>
       {open ? (
         <button
           className={cn("fixed inset-0 z-30 lg:hidden", ws.overlay)}
@@ -120,6 +119,9 @@ function TeacherShellContent({ children }: { children: React.ReactNode }) {
       ) : null}
 
       <aside
+        id="teacher-sidebar"
+        role="navigation"
+        aria-label="Primary"
         className={cn(
           "fixed inset-y-0 left-0 z-40 border-r border-workspace-border bg-workspace-sidebar transition-transform duration-[var(--duration-workspace-normal)] lg:relative",
           compactCards ? "w-60" : "w-64",
@@ -130,7 +132,7 @@ function TeacherShellContent({ children }: { children: React.ReactNode }) {
           <div
             className={`flex items-center justify-between border-b border-slate-200/80 px-4 ${compactCards ? "py-4" : "py-5"}`}
           >
-            <Link href="/teacher" className="flex items-center gap-3">
+            <Link href="/app/teacher" className="flex items-center gap-3">
               <div className="h-10 w-10 overflow-hidden rounded-full bg-white shadow-sm">
                 <Image
                   src="/icon.png"
@@ -221,6 +223,9 @@ function TeacherShellContent({ children }: { children: React.ReactNode }) {
             <button
               className="-ml-2 p-2 text-slate-600 lg:hidden"
               onClick={() => setOpen(true)}
+              aria-expanded={open}
+              aria-controls="teacher-sidebar"
+              aria-label="Open menu"
             >
               <Menu className="h-5 w-5" />
             </button>
@@ -259,30 +264,45 @@ function TeacherShellContent({ children }: { children: React.ReactNode }) {
                 href="/teacher/profile"
                 className="group relative grid h-10 w-10 place-items-center overflow-hidden rounded-full border border-slate-200 bg-slate-100 text-sm font-semibold text-slate-900 shadow-sm transition-all hover:ring-2 hover:ring-sky-100"
               >
-                {avatarUrl ? (
-                  <ProfileAvatarImage
-                    src={avatarUrl}
-                    alt={displayName}
-                    width={40}
-                    height={40}
-                    className="h-full w-full object-cover"
-                    fallback={displayName.slice(0, 1).toUpperCase()}
-                  />
-                ) : (
-                  displayName.slice(0, 1).toUpperCase()
-                )}
+                {(() => {
+                  const initials = getDisplayInitials({
+                    firstName:
+                      account?.profile?.first_name ||
+                      (account?.profile as any)?.firstName,
+                    lastName:
+                      account?.profile?.last_name ||
+                      (account?.profile as any)?.lastName,
+                    displayName,
+                    email: account?.profile?.email,
+                  });
+                  return avatarUrl ? (
+                    <ProfileAvatarImage
+                      src={avatarUrl}
+                      alt={displayName}
+                      width={40}
+                      height={40}
+                      className="h-full w-full object-cover"
+                      fallback={initials}
+                    />
+                  ) : (
+                    initials
+                  );
+                })()}
               </Link>
             </div>
           </div>
         </header>
 
         {workspaceError ? (
-          <div className="mx-4 mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 md:mx-6">
+          <div
+            role="alert"
+            className="mx-4 mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 md:mx-6"
+          >
             {workspaceError}
           </div>
         ) : null}
 
-        <main className={cn(ws.mainScroll, "flex-1")}>
+        <main id="main" className={cn(ws.mainScroll, "flex-1")}>
           <div
             className={cn(
               "relative z-0 zamschool-workspace-main-inner animate-enter-up space-y-5 pb-24 lg:pb-6",
@@ -293,36 +313,14 @@ function TeacherShellContent({ children }: { children: React.ReactNode }) {
           </div>
         </main>
 
-        <nav className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white px-2 py-2 lg:hidden">
-          <div className="grid grid-cols-5 gap-1">
-            {teacherDock.map((item) => {
-              const active = isActivePath(pathname, item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setOpen(false)}
-                  className={`flex flex-col items-center justify-center rounded-lg py-2 ${
-                    active ? "bg-sky-50 text-sky-600" : "text-slate-500"
-                  }`}
-                >
-                  <item.icon className="h-4.5 w-4.5" />
-                  <span className="mt-1 text-[10px] font-medium">
-                    {item.label}
-                  </span>
-                </Link>
-              );
-            })}
-          </div>
-        </nav>
+        <MobileDock
+          pathname={pathname}
+          items={teacherDock}
+          onClose={() => setOpen(false)}
+          activeAccent="sky"
+          columns={5}
+        />
       </div>
     </div>
   );
 }
-
-function isActivePath(pathname: string, href: string) {
-  return pathname === href || pathname.startsWith(`${href}/`);
-}
-
-// Static analysis requirements:
-// href: "/teacher", label: "Dashboard"

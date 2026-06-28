@@ -37,6 +37,7 @@ export async function GET(req: Request) {
     if ("response" in actor) return actor.response;
     const rate = await applyPlatformRateLimit({
       scope: "account-messages-read",
+      schoolId: actor.schoolId,
       req,
       userId: actor.userId,
       preset: "messagesRead",
@@ -44,7 +45,10 @@ export async function GET(req: Request) {
     if (!rate.allowed) return platformRateLimitResponse(rate);
 
     const { searchParams } = new URL(req.url);
-    const limit = Math.min(Math.max(Number(searchParams.get("limit") || 50), 1), 100);
+    const limit = Math.min(
+      Math.max(Number(searchParams.get("limit") || 50), 1),
+      100,
+    );
 
     const response = NextResponse.json({
       data: await loadMessagesForActor(actor.userId, actor.schoolId, limit),
@@ -54,7 +58,7 @@ export async function GET(req: Request) {
   } catch (error: unknown) {
     return NextResponse.json(
       { error: safeErrorMessage(error, "Failed to fetch account messages") },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -66,6 +70,7 @@ export async function POST(req: Request) {
 
     const rate = await applyPlatformRateLimit({
       scope: "account-messages-write",
+      schoolId: actor.schoolId,
       req,
       userId: actor.userId,
       preset: "messagesWrite",
@@ -76,9 +81,15 @@ export async function POST(req: Request) {
     if (dailyLimit) return dailyLimit;
 
     const payload = createMessageSchema.parse(await req.json());
-    const recipient = await loadRecipientByIdentity(actor.schoolId, payload.recipientId);
+    const recipient = await loadRecipientByIdentity(
+      actor.schoolId,
+      payload.recipientId,
+    );
     if (!recipient) {
-      return NextResponse.json({ error: "Recipient not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Recipient not found" },
+        { status: 404 },
+      );
     }
 
     const recipientIdentityId = resolveMessagingIdentityId(recipient);
@@ -105,11 +116,14 @@ export async function POST(req: Request) {
         [inserted],
         actor.userId,
         await loadProfilesByIdentityIds(
-          [inserted.sender_id, inserted.recipient_id, recipient.id, recipient.auth_user_id].filter(
-            Boolean
-          ) as string[],
-          actor.schoolId
-        )
+          [
+            inserted.sender_id,
+            inserted.recipient_id,
+            recipient.id,
+            recipient.auth_user_id,
+          ].filter(Boolean) as string[],
+          actor.schoolId,
+        ),
       )[0],
       quota: await getMessageSendQuota(actor.userId),
     });
@@ -117,13 +131,13 @@ export async function POST(req: Request) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: "Validation failed", details: error.issues },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     return NextResponse.json(
       { error: safeErrorMessage(error, "Failed to send message") },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -133,8 +147,14 @@ export async function PUT(req: Request) {
     const actor = await authenticateAccountPortalRequest(req);
     if ("response" in actor) return actor.response;
 
-    const payload = markMessagesReadSchema.parse(await req.json().catch(() => ({})));
-    const updatedCount = await markMessagesAsRead(actor.userId, actor.schoolId, payload);
+    const payload = markMessagesReadSchema.parse(
+      await req.json().catch(() => ({})),
+    );
+    const updatedCount = await markMessagesAsRead(
+      actor.userId,
+      actor.schoolId,
+      payload,
+    );
     if (updatedCount > 0) {
       invalidateInboxHotReads(actor.userId, actor.schoolId);
     }
@@ -149,18 +169,22 @@ export async function PUT(req: Request) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: "Validation failed", details: error.issues },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     return NextResponse.json(
       { error: safeErrorMessage(error, "Failed to update account messages") },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
-async function loadMessagesForActor(userId: string, schoolId: string, limit: number) {
+async function loadMessagesForActor(
+  userId: string,
+  schoolId: string,
+  limit: number,
+) {
   const { data: rows, error: messageError } = await supabaseAdmin
     .from("messages")
     .select("id, sender_id, recipient_id, body, subject, created_at, is_read")
@@ -177,10 +201,13 @@ async function loadMessagesForActor(userId: string, schoolId: string, limit: num
     new Set(
       (rows || [])
         .flatMap((row: any) => [row.sender_id, row.recipient_id])
-        .filter(Boolean)
-    )
+        .filter(Boolean),
+    ),
   );
-  const profilesByIdentity = await loadProfilesByIdentityIds(participantIds, schoolId);
+  const profilesByIdentity = await loadProfilesByIdentityIds(
+    participantIds,
+    schoolId,
+  );
 
   return serializeAccountMessages(rows || [], userId, profilesByIdentity);
 }
@@ -188,7 +215,7 @@ async function loadMessagesForActor(userId: string, schoolId: string, limit: num
 async function markMessagesAsRead(
   userId: string,
   schoolId: string,
-  payload: z.infer<typeof markMessagesReadSchema>
+  payload: z.infer<typeof markMessagesReadSchema>,
 ) {
   const targetIds = Array.from(new Set((payload.ids || []).filter(Boolean)));
 

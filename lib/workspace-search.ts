@@ -29,15 +29,16 @@ const KIND_ORDER: WorkspaceSearchKind[] = [
   "event",
 ];
 
-export const WORKSPACE_SEARCH_KIND_LABELS: Record<WorkspaceSearchKind, string> = {
-  page: "Pages",
-  person: "People",
-  class: "Classes",
-  subject: "Subjects",
-  assignment: "Assignments",
-  announcement: "Announcements",
-  event: "Events",
-};
+export const WORKSPACE_SEARCH_KIND_LABELS: Record<WorkspaceSearchKind, string> =
+  {
+    page: "Pages",
+    person: "People",
+    class: "Classes",
+    subject: "Subjects",
+    assignment: "Assignments",
+    announcement: "Announcements",
+    event: "Events",
+  };
 
 export function sanitizeWorkspaceSearchQuery(raw: string): string {
   return raw
@@ -47,7 +48,10 @@ export function sanitizeWorkspaceSearchQuery(raw: string): string {
     .slice(0, 80);
 }
 
-export function matchesWorkspaceSearchQuery(haystack: string, query: string): boolean {
+export function matchesWorkspaceSearchQuery(
+  haystack: string,
+  query: string,
+): boolean {
   const normalized = sanitizeWorkspaceSearchQuery(query).toLowerCase();
   if (!normalized) {
     return true;
@@ -64,7 +68,7 @@ export function toWorkspaceSearchPattern(query: string): string {
 export function filterWorkspacePageItems(
   items: WorkspaceSearchResult[],
   query: string,
-  limit = 7
+  limit = 7,
 ): WorkspaceSearchResult[] {
   const deduped = dedupeWorkspaceSearchResults(items);
   const normalized = sanitizeWorkspaceSearchQuery(query).toLowerCase();
@@ -74,7 +78,12 @@ export function filterWorkspacePageItems(
   }
 
   return deduped
-    .filter((item) => matchesWorkspaceSearchQuery(`${item.label} ${item.hint} ${item.href}`, normalized))
+    .filter((item) =>
+      matchesWorkspaceSearchQuery(
+        `${item.label} ${item.hint} ${item.href}`,
+        normalized,
+      ),
+    )
     .slice(0, limit);
 }
 
@@ -82,10 +91,13 @@ export function mergeWorkspaceSearchResults(
   localPages: WorkspaceSearchResult[],
   remoteResults: WorkspaceSearchResult[],
   query: string,
-  limit = WORKSPACE_SEARCH_DEFAULT_LIMIT
+  limit = WORKSPACE_SEARCH_DEFAULT_LIMIT,
 ): WorkspaceSearchResult[] {
   const normalized = sanitizeWorkspaceSearchQuery(query).toLowerCase();
-  const merged = dedupeWorkspaceSearchResults([...localPages, ...remoteResults]);
+  const merged = dedupeWorkspaceSearchResults([
+    ...localPages,
+    ...remoteResults,
+  ]);
 
   if (!normalized) {
     return merged.slice(0, limit);
@@ -98,7 +110,9 @@ export function mergeWorkspaceSearchResults(
       score: scoreWorkspaceSearchResult(item, normalized),
     }))
     .filter((entry) => entry.score > 0)
-    .sort((left, right) => right.score - left.score || left.index - right.index);
+    .sort(
+      (left, right) => right.score - left.score || left.index - right.index,
+    );
 
   return ranked.slice(0, limit).map((entry) => entry.item);
 }
@@ -126,7 +140,10 @@ export function groupWorkspaceSearchResults(results: WorkspaceSearchResult[]) {
   });
 }
 
-export function buildWorkspaceUsersHref(query: string, profileId?: string | null) {
+export function buildWorkspaceUsersHref(
+  query: string,
+  profileId?: string | null,
+) {
   const params = new URLSearchParams();
   const sanitized = sanitizeWorkspaceSearchQuery(query);
   if (sanitized) {
@@ -141,21 +158,32 @@ export function buildWorkspaceUsersHref(query: string, profileId?: string | null
 }
 
 export function navItemsToWorkspacePages(
-  navItems: Array<{ href: string; label: string }>
+  navItems: Array<{ href: string; label: string }>,
 ): WorkspaceSearchResult[] {
-  return navItems.map((item) => ({
-    id: `page:${item.href}`,
-    kind: "page",
-    label: item.label,
-    hint: item.href.replace(/^\//, "").replace(/\//g, " / ") || "Workspace page",
-    href: item.href,
-  }));
+  const seen = new Set<string>();
+
+  return navItems.flatMap((item) => {
+    if (seen.has(item.href)) return [];
+    seen.add(item.href);
+
+    return [
+      {
+        id: `page:${item.href}`,
+        kind: "page" as const,
+        label: item.label,
+        hint:
+          item.href.replace(/^\//, "").replace(/\//g, " / ") ||
+          "Workspace page",
+        href: item.href,
+      },
+    ];
+  });
 }
 
 export function buildWorkspaceListHref(
   basePath: string,
   query: string,
-  extra?: Record<string, string | undefined | null>
+  extra?: Record<string, string | undefined | null>,
 ) {
   const params = new URLSearchParams();
   const sanitized = sanitizeWorkspaceSearchQuery(query);
@@ -178,7 +206,7 @@ function dedupeWorkspaceSearchResults(results: WorkspaceSearchResult[]) {
   const deduped: WorkspaceSearchResult[] = [];
 
   for (const result of results) {
-    const key = `${result.kind}:${result.id}`;
+    const key = `${result.kind}:${result.href || result.id}`;
     if (seen.has(key)) {
       continue;
     }
@@ -189,7 +217,10 @@ function dedupeWorkspaceSearchResults(results: WorkspaceSearchResult[]) {
   return deduped;
 }
 
-function scoreWorkspaceSearchResult(item: WorkspaceSearchResult, query: string) {
+function scoreWorkspaceSearchResult(
+  item: WorkspaceSearchResult,
+  query: string,
+) {
   const label = item.label.toLowerCase();
   const hint = item.hint.toLowerCase();
   const href = item.href.toLowerCase();

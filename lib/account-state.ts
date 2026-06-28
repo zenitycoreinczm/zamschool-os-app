@@ -1,3 +1,5 @@
+import { scryptSync, randomBytes } from "node:crypto";
+
 export const MANAGED_FIRST_LOGIN_ROLES = [
   "admin",
   "teacher",
@@ -11,10 +13,13 @@ export const MANAGED_FIRST_LOGIN_ROLES = [
   "hr_admin",
   "ict_admin",
   "discipline_admin",
+  "registrar",
 ] as const;
 
 export function shouldRequireFirstLoginPasswordChange(role: string) {
-  return MANAGED_FIRST_LOGIN_ROLES.includes(role as (typeof MANAGED_FIRST_LOGIN_ROLES)[number]);
+  return MANAGED_FIRST_LOGIN_ROLES.includes(
+    role as (typeof MANAGED_FIRST_LOGIN_ROLES)[number],
+  );
 }
 
 export function buildCreatedAuthUserMetadata(input: {
@@ -34,8 +39,17 @@ export function generateTemporaryPassword() {
   const bytes = new Uint8Array(12);
   crypto.getRandomValues(bytes);
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
-  const random = Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
+  const random = Array.from(
+    bytes,
+    (byte) => alphabet[byte % alphabet.length],
+  ).join("");
   return `Zam@${random}9`;
+}
+
+export function hashTemporaryPassword(password: string): string {
+  const salt = randomBytes(16).toString("hex");
+  const hash = scryptSync(password, salt, 64).toString("hex");
+  return `scrypt:${salt}:${hash}`;
 }
 
 export function buildCreatedProfilePayload(input: {
@@ -50,7 +64,9 @@ export function buildCreatedProfilePayload(input: {
   now?: Date;
 }) {
   const now = input.now || new Date();
-  const requiresPasswordChange = shouldRequireFirstLoginPasswordChange(input.role);
+  const requiresPasswordChange = shouldRequireFirstLoginPasswordChange(
+    input.role,
+  );
 
   return {
     id: input.authUserId,
@@ -62,7 +78,9 @@ export function buildCreatedProfilePayload(input: {
     email: input.email,
     phone: input.phone,
     must_change_password: requiresPasswordChange,
-    temporary_password_issued_at: requiresPasswordChange ? now.toISOString() : null,
+    temporary_password_issued_at: requiresPasswordChange
+      ? now.toISOString()
+      : null,
     ...input.profileExtras,
   };
 }

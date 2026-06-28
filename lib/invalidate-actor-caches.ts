@@ -4,6 +4,7 @@ import { invalidateCache } from "@/lib/enhanced-cache";
 import { invalidateInboxHotReads } from "@/lib/inbox-read-cache";
 import { invalidateMiddlewareProfileRole } from "@/lib/middleware-profile-cache";
 import { invalidateWorkspaceHotRead } from "@/lib/workspace-context-server";
+import { shellCacheKey, workspaceCacheKey } from "@/lib/redis/keys";
 
 /** In-memory enhanced-cache entries for non-sensitive profile columns. */
 export async function invalidateProfileCache(userId: string): Promise<void> {
@@ -25,14 +26,20 @@ export async function invalidateActorCaches(authUserId: string): Promise<void> {
   invalidateWorkspaceHotRead(id);
   invalidateInboxHotReads(id);
 
-  const { invalidateRoleCache } = await import("@/lib/redis-role-cache");
+  const { invalidateRoleCache } = await import("@/lib/redis/role-cache");
   await invalidateRoleCache(id);
+
+  const { redisDel } = await import("@/lib/redis/client");
+  await Promise.all([
+    redisDel(shellCacheKey(id, null)),
+    redisDel(workspaceCacheKey(id, null)),
+  ]);
 }
 
 /** Resolve profile id ↔ auth_user_id and invalidate all linked identity keys. */
 export async function invalidateActorCachesForProfile(
   client: SupabaseClient,
-  profileId: string
+  profileId: string,
 ): Promise<void> {
   const normalized = String(profileId || "").trim();
   if (!normalized) return;
@@ -40,7 +47,7 @@ export async function invalidateActorCachesForProfile(
   const ids = new Set<string>([normalized]);
   const { data } = await client
     .from("profiles")
-    .select("id, auth_user_id")
+    .select("id, auth_user_id, school_id")
     .eq("id", normalized)
     .maybeSingle();
 
@@ -49,4 +56,17 @@ export async function invalidateActorCachesForProfile(
   if (authId) ids.add(authId);
 
   await Promise.all([...ids].map((id) => invalidateActorCaches(id)));
+
+  const schoolId = String(
+    (data as { school_id?: string | null } | null)?.school_id || "",
+  ).trim();
+  if (schoolId) {
+    const { redisDel } = await import("@/lib/redis/client");
+    await Promise.all(
+      [...ids].flatMap((id) => [
+        redisDel(shellCacheKey(id, schoolId)),
+        redisDel(workspaceCacheKey(id, schoolId)),
+      ]),
+    );
+  }
 }

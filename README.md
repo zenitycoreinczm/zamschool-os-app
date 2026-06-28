@@ -32,9 +32,9 @@ You need Node.js, a Supabase project, and (optionally) a Cloudflare R2 bucket.
 
 1. `npm install`
 2. Copy `.env.example` to `.env.local` and fill in the Supabase URL, anon key, and (if you need the strict tenant audit locally) the service role key. Add R2 credentials if you are working on uploads.
-3. Apply migrations in lexical order from `supabase/migrations/`. There are around 48 of them. See [DATA.md](./docs/DATA.md) for the policy.
+3. Apply migrations in lexical order from `supabase/migrations/`. The directory currently ships one baseline (92 tables, all RLS-enabled) plus targeted repairs; new schema changes go in next migrations in the same folder. See [DATA.md](./docs/DATA.md) for the policy.
 4. `npm run dev` — start the Next.js server on port 3000.
-5. `npm run cloudflare:status` — if you are working on the gateway worker.
+5. `npx wrangler tail` / `npx wrangler deploy` — if you are working on the gateway worker. Run `npm run cloudflare:status` for the connection helper.
 
 ## Project structure
 
@@ -43,8 +43,8 @@ You need Node.js, a Supabase project, and (optionally) a Cloudflare R2 bucket.
 - `components/` — shells, sidebars, header, dock, modals, widgets. Side components co-locate with their owning shell.
 - `lib/` — pure helpers: `admin-route-client`, `gateway-read-client`, `workspace-nav`, `workspace-search`, auth and rate-limit helpers.
 - `hooks/` — `use-mobile`, `useReveal`, and other micro-hooks.
-- `supabase/migrations/` — 001-048, applied in lexical order.
-- `scripts/` — healthcheck, schema-check, tenant audit, load tests, CDN preflight.
+- `supabase/migrations/` — baseline + targeted repairs, applied in lexical order.
+- `scripts/` — healthcheck, route coverage audit, migrations applier, CDN preflight, dev-server helper.
 - `workers/gateway/` — Cloudflare Worker for edge reads.
 - `__tests__/` — static-grep tests. See [AUDIT.md](./docs/AUDIT.md) for the freshness audit.
 
@@ -54,14 +54,21 @@ You will use these most often:
 
 - `npm run dev` — start the dev server.
 - `npm run build` and `npm run start` — production build and run.
-- `npm test` — run all 27 static-grep tests.
-- `npm run test:security` — run the security-focused subset.
+- `npm test` — run all static-grep + worker edge tests under `__tests__/` and `workers/gateway/src/`.
+- `npm run test:all` — alias for `npm test`.
+- `npm run test:security` — security-focused subset: tenant audit + worker JWT/rate-limit tests + MFA/session-switch/files route tests.
 - `npm run lint` — ESLint across the repo.
-- `npm run schema:check` and `npm run schema:check:strict` — verify migrations.
-- `npm run audit:tenant` and `npm run audit:tenant:strict` — service-role audit.
-- `npm run load:test:<tier>` — load tests at smoke, tier1_100, tier2_500, tier3_1000.
+- `npm run schema:check` / `npm run schema:check:strict` — verify migrations (required tables, RLS coverage, no duplicates).
+- `npm run audit:tenant` / `npm run audit:tenant:strict` — service-role tenant isolation audit.
+- `npm run audit:routes` — route coverage audit (lists mutation routes missing auth, feature checks, or audit logs).
+- `npm run load:test:smoke` / `:tier1` / `:tier2` / `:tier3` / `:dry` — load tests at four tiers.
+- `npm run cloudflare:status` / `:cache-rules` / `:discover-r2` / `:r2-test` — Cloudflare Worker and R2 helpers.
+- `npm run healthcheck` — run the production healthcheck.
+- `npm run cdn:preflight` — validate Cloudflare R2 / image-delivery config before deploy.
+- `npm run clean` — blow away `.next` and `.next_broken_*` build artifacts.
+- `npm run dev:restart` — Windows-only: tear down the dev server and restart it.
 
-See [DEVELOPMENT.md](./docs/DEVELOPMENT.md) for the full list and [PRODUCTION.md](./docs/PRODUCTION.md) for the readiness gates.
+See [DEVELOPMENT.md](./docs/DEVELOPMENT.md) for the day-to-day workflow and [PRODUCTION.md](./docs/PRODUCTION.md) for the readiness story.
 
 ## Roles
 
@@ -69,7 +76,7 @@ The system supports 14 roles with role-based shells and route prefixes. The acti
 
 ## Security
 
-You should treat every page as if it were public. RLS is enabled on every production table; service-role queries are audited by `npm run audit:tenant:strict`. MFA is TOTP-based with fail-closed rate limiting. See [SECURITY.md](./docs/SECURITY.md) for the threat model and the layers.
+You should treat every page as if it were public. RLS is enabled on every production table; service-role queries are audited by `npm run audit:tenant:strict` (CI-enforced). MFA is TOTP-based with fail-closed rate limiting. See [SECURITY.md](./docs/SECURITY.md) for the threat model and the layers.
 
 ## License
 

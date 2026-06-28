@@ -18,7 +18,7 @@ export function ModuleCard({ title, description, href, icon: Icon, tone }: Modul
     <Link
       href={href}
       className={cn(
-        "group relative overflow-hidden rounded-workspace-xl border border-workspace-border bg-white p-5 shadow-workspace-sm",
+        "group relative grid min-h-[8.5rem] grid-cols-[2.5rem_minmax(0,1fr)] gap-3 overflow-hidden rounded-workspace-xl border border-workspace-border bg-white p-4 shadow-workspace-sm",
         "transition duration-[var(--duration-workspace-normal)] ease-[var(--ease-workspace-out)]",
         "hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-workspace-md focus-visible:shadow-workspace-focus"
       )}
@@ -29,18 +29,19 @@ export function ModuleCard({ title, description, href, icon: Icon, tone }: Modul
       />
       <div
         className={cn(
-          "relative mb-4 flex h-11 w-11 items-center justify-center rounded-workspace-lg ring-1 transition",
+          "relative flex h-10 w-10 items-center justify-center rounded-workspace-lg ring-1 transition",
           moduleToneClass(tone)
         )}
       >
         <Icon className="h-5 w-5" strokeWidth={1.75} />
       </div>
-      <h3 className="relative font-semibold tracking-tight text-slate-900">{title}</h3>
-      <p className="relative mt-2 text-sm leading-relaxed text-workspace-muted">{description}</p>
-      <p className="relative mt-4 inline-flex items-center gap-1 text-sm font-semibold text-brand group-hover:text-brand-hover">
-        Open module
-        <ArrowUpRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-      </p>
+      <div className="relative min-w-0">
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="font-semibold leading-snug tracking-tight text-slate-900">{title}</h3>
+          <ArrowUpRight className="mt-0.5 h-4 w-4 shrink-0 text-brand transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-brand-hover" />
+        </div>
+        <p className="mt-1.5 line-clamp-2 text-sm leading-6 text-workspace-muted">{description}</p>
+      </div>
     </Link>
   );
 }

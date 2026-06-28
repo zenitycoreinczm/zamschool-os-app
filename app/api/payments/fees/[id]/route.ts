@@ -1,21 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { feeUpdateSchema } from "@/lib/payment-input";
+import { requireFeatureAccess } from "@/lib/feature-permissions";
 import { requirePaymentsContext } from "@/lib/server-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { auditDomainWrite } from "@/lib/audit-domain";
 import { getClientIp } from "@/lib/server-guards";
+import { logger } from "@/lib/logger";
+
+const log = logger.child({ module: "payments.fees" });
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
+  const { id } = await params;
   try {
     const access = await requirePaymentsContext(request);
     if (!access.ok) return access.response;
+    const perm = await requireFeatureAccess(
+      access.context,
+      "payments",
+      "update",
+    );
+    if (!perm.ok) return perm.response;
     const { schoolId } = access.context;
 
-    const { id } = await params;
     const body = await request.json();
     const payload = feeUpdateSchema.parse(body);
 
@@ -33,10 +43,10 @@ export async function PUT(
       .single();
 
     if (feeError) {
-      console.error("Error updating fee:", feeError);
+      log.error("fees.update_failed", { schoolId, feeId: id, error: feeError });
       return NextResponse.json(
         { error: "Failed to update fee" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -54,33 +64,39 @@ export async function PUT(
       ipAddress: getClientIp(request),
     });
 
+    log.info("fees.updated", { schoolId, feeId: id });
     return NextResponse.json({ data: updatedFee });
   } catch (error) {
     if (error instanceof ZodError) {
       return NextResponse.json(
         { error: "Invalid fee submission", details: error.issues },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    console.error("Error in fee PUT:", error);
+    log.error("fees.put_unexpected", { feeId: id, error });
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
+  const { id } = await params;
   try {
     const access = await requirePaymentsContext(request);
     if (!access.ok) return access.response;
+    const perm = await requireFeatureAccess(
+      access.context,
+      "payments",
+      "delete",
+    );
+    if (!perm.ok) return perm.response;
     const { schoolId } = access.context;
-
-    const { id } = await params;
 
     const { data: updatedFee, error: feeError } = await supabaseAdmin
       .from("fees")
@@ -94,10 +110,10 @@ export async function DELETE(
       .single();
 
     if (feeError) {
-      console.error("Error deleting fee:", feeError);
+      log.error("fees.delete_failed", { schoolId, feeId: id, error: feeError });
       return NextResponse.json(
         { error: "Failed to delete fee" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -116,12 +132,13 @@ export async function DELETE(
       ipAddress: getClientIp(request),
     });
 
+    log.info("fees.deactivated", { schoolId, feeId: id });
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Error in fee DELETE:", error);
+    log.error("fees.delete_unexpected", { feeId: id, error });
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

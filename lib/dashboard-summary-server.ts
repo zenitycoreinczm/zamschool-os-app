@@ -36,7 +36,14 @@ export async function loadDashboardSummary(schoolId: string): Promise<DashboardS
 }
 
 async function buildDashboardSummary(schoolId: string): Promise<DashboardSummary> {
-  const [yearResult, termResult, studentRows] = await Promise.all([
+  const [
+    yearResult,
+    termResult,
+    studentRows,
+    studentCount,
+    teacherCount,
+    parentCount,
+  ] = await Promise.all([
     supabaseAdmin
       .from("academic_years")
       .select("name")
@@ -52,6 +59,9 @@ async function buildDashboardSummary(schoolId: string): Promise<DashboardSummary
       .limit(1)
       .maybeSingle(),
     supabaseAdmin.from("profiles").select("id, gender, role").eq("school_id", schoolId),
+    countSchoolRows("students", schoolId),
+    countSchoolRows("teachers", schoolId),
+    countSchoolRows("parents", schoolId),
   ]);
 
   const academicLabel = buildAcademicContextLabel(yearResult.data?.name, termResult.data?.name);
@@ -86,6 +96,10 @@ async function buildDashboardSummary(schoolId: string): Promise<DashboardSummary
     else if (gender === "girls") studentTotals.girls += 1;
   }
 
+  roleCounts.student = Math.max(roleCounts.student, studentCount);
+  roleCounts.teacher = Math.max(roleCounts.teacher, teacherCount);
+  roleCounts.parent = Math.max(roleCounts.parent, parentCount);
+  studentTotals.total = Math.max(studentTotals.total, studentCount);
   studentTotals.unspecified = Math.max(0, studentTotals.total - studentTotals.boys - studentTotals.girls);
 
   return {
@@ -94,6 +108,16 @@ async function buildDashboardSummary(schoolId: string): Promise<DashboardSummary
     roleCounts,
     studentTotals,
   };
+}
+
+async function countSchoolRows(table: string, schoolId: string) {
+  const { count, error } = await supabaseAdmin
+    .from(table)
+    .select("id", { count: "exact", head: true })
+    .eq("school_id", schoolId);
+
+  if (error) return 0;
+  return count || 0;
 }
 
 function resolveDashboardRoleKey(role: unknown): keyof DashboardRoleCounts | null {

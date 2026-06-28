@@ -28,7 +28,7 @@ type WorkspaceInboxCenterProps = {
   notificationsHref: string;
   enabled?: boolean;
   initialUnread?: { messages: number; notifications: number };
-  onUnreadChange?: (counts: {
+  onUnreadChangeAction?: (counts: {
     messages: number;
     notifications: number;
   }) => void;
@@ -40,7 +40,7 @@ export function WorkspaceInboxCenter({
   notificationsHref,
   enabled = true,
   initialUnread,
-  onUnreadChange,
+  onUnreadChangeAction,
 }: WorkspaceInboxCenterProps) {
   const [unread, setUnread] = useState({
     messages: initialUnread?.messages ?? 0,
@@ -62,15 +62,17 @@ export function WorkspaceInboxCenter({
   const [sending, setSending] = useState(false);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const drawerRef = useRef<HTMLDivElement | null>(null);
   const lastCountRefreshRef = useRef<number>(0);
   const COUNT_REFRESH_COOLDOWN_MS = 10_000;
 
   const publishUnread = useCallback(
     (next: { messages: number; notifications: number }) => {
       setUnread(next);
-      onUnreadChange?.(next);
+      onUnreadChangeAction?.(next);
     },
-    [onUnreadChange],
+    [onUnreadChangeAction],
   );
 
   const refreshCounts = useCallback(
@@ -157,6 +159,92 @@ export function WorkspaceInboxCenter({
     void refreshPreview();
   }, [panel, refreshPreview]);
 
+  // Escape + focus trap for the popup panel
+  useEffect(() => {
+    if (!panel || !panelRef.current) return;
+
+    const panelEl = panelRef.current;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setPanel(null);
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const focusable = panelEl.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      if (event.shiftKey) {
+        if (document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [panel]);
+
+  // Escape + focus trap for the drawer
+  useEffect(() => {
+    if (!drawerKind || !drawerRef.current) return;
+
+    const drawerEl = drawerRef.current;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setDrawerKind(null);
+        setActiveMessage(null);
+        setActiveNotification(null);
+        setReplyBody("");
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const focusable = drawerEl.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      if (event.shiftKey) {
+        if (document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    requestAnimationFrame(() => {
+      const firstFocusable = drawerEl.querySelector<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      firstFocusable?.focus();
+    });
+
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [drawerKind]);
+
   const openMessageDrawer = async (message: InboxMessagePreview) => {
     setPanel(null);
     setDrawerKind("message");
@@ -170,7 +258,7 @@ export function WorkspaceInboxCenter({
         messages: Math.max(0, prev.messages - 1),
         notifications: prev.notifications,
       };
-      onUnreadChange?.(next);
+      onUnreadChangeAction?.(next);
       return next;
     });
 
@@ -199,7 +287,7 @@ export function WorkspaceInboxCenter({
         messages: prev.messages,
         notifications: Math.max(0, prev.notifications - 1),
       };
-      onUnreadChange?.(next);
+      onUnreadChangeAction?.(next);
       return next;
     });
 
@@ -252,6 +340,8 @@ export function WorkspaceInboxCenter({
     return null;
   }
 
+  const panelId = panel ? `inbox-panel-${panel}` : undefined;
+
   return (
     <>
       <div
@@ -261,8 +351,10 @@ export function WorkspaceInboxCenter({
         <button
           type="button"
           aria-label="Messages"
+          aria-expanded={panel === "messages"}
+          aria-controls={panel === "messages" ? panelId : undefined}
           onClick={() => togglePanel("messages")}
-          className="relative flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white/80 text-slate-500 hover:bg-white md:h-10 md:w-10"
+          className="relative flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white/80 text-slate-500 transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 md:h-10 md:w-10"
         >
           <MessageSquare className="h-4 w-4" />
           {unread.messages > 0 ? (
@@ -275,8 +367,10 @@ export function WorkspaceInboxCenter({
         <button
           type="button"
           aria-label="Notifications"
+          aria-expanded={panel === "notifications"}
+          aria-controls={panel === "notifications" ? panelId : undefined}
           onClick={() => togglePanel("notifications")}
-          className="relative flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white/80 text-slate-500 hover:bg-white md:h-10 md:w-10"
+          className="relative flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white/80 text-slate-500 transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 md:h-10 md:w-10"
         >
           <Bell className="h-4 w-4" />
           {unread.notifications > 0 ? (
@@ -288,7 +382,12 @@ export function WorkspaceInboxCenter({
 
         {panel ? (
           <div
-            className={`absolute right-0 top-12 w-[min(92vw,22rem)] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl ${ws.popover}`}
+            ref={panelRef}
+            id={panelId}
+            role="dialog"
+            aria-modal="true"
+            aria-label={panel === "messages" ? "Messages inbox" : "Notifications"}
+            className={`absolute right-0 top-12 w-[min(92vw,22rem)] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-workspace-lg ${ws.popover}`}
           >
             <div className="border-b border-slate-100 px-4 py-3">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
@@ -323,7 +422,7 @@ export function WorkspaceInboxCenter({
                       key={message.id}
                       type="button"
                       onClick={() => void openMessageDrawer(message)}
-                      className="mb-1 flex w-full flex-col rounded-2xl px-3 py-3 text-left transition hover:bg-slate-50"
+                      className="mb-1 flex w-full flex-col rounded-2xl px-3 py-3 text-left transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200"
                     >
                       <p className="text-sm font-semibold text-slate-800">
                         {message.senderLabel}
@@ -347,7 +446,7 @@ export function WorkspaceInboxCenter({
                     key={notification.id}
                     type="button"
                     onClick={() => void openNotificationDrawer(notification)}
-                    className="mb-1 flex w-full flex-col rounded-2xl px-3 py-3 text-left transition hover:bg-slate-50"
+                    className="mb-1 flex w-full flex-col rounded-2xl px-3 py-3 text-left transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200"
                   >
                     <p className="text-sm font-semibold text-slate-800">
                       {notification.title}
@@ -364,7 +463,7 @@ export function WorkspaceInboxCenter({
               <Link
                 href={panel === "messages" ? messagesHref : notificationsHref}
                 onClick={() => setPanel(null)}
-                className="inline-flex w-full items-center justify-center rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+                className="inline-flex w-full items-center justify-center rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200"
               >
                 {panel === "messages"
                   ? "Open full inbox"
@@ -383,7 +482,13 @@ export function WorkspaceInboxCenter({
             className="absolute inset-0 bg-slate-900/30"
             onClick={closeDrawer}
           />
-          <aside className="relative flex h-full w-full max-w-md flex-col border-l border-slate-200 bg-white shadow-2xl">
+          <aside
+            ref={drawerRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="inbox-drawer-title"
+            className="relative flex h-full w-full max-w-md flex-col border-l border-slate-200 bg-white shadow-workspace-lg"
+          >
             <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
               <div className="min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
@@ -391,7 +496,7 @@ export function WorkspaceInboxCenter({
                     ? "Quick read & reply"
                     : "Notification"}
                 </p>
-                <h2 className="mt-1 truncate text-lg font-semibold text-slate-900">
+                <h2 id="inbox-drawer-title" className="mt-1 truncate text-lg font-semibold text-slate-900">
                   {drawerKind === "message"
                     ? activeMessage?.subject || "Message"
                     : activeNotification?.title || "Notification"}
@@ -408,7 +513,8 @@ export function WorkspaceInboxCenter({
               <button
                 type="button"
                 onClick={closeDrawer}
-                className="rounded-full border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"
+                className="rounded-full border border-slate-200 p-2 text-slate-500 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200"
+                aria-label="Close"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -456,7 +562,7 @@ export function WorkspaceInboxCenter({
                   type="button"
                   disabled={sending || !replyBody.trim()}
                   onClick={() => void handleSendReply()}
-                  className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700 disabled:opacity-60"
+                  className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-sky-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 disabled:opacity-60"
                 >
                   <Send className="h-4 w-4" />
                   {sending ? "Sending..." : "Send reply"}
@@ -467,7 +573,7 @@ export function WorkspaceInboxCenter({
                 <Link
                   href={notificationsHref}
                   onClick={closeDrawer}
-                  className="inline-flex w-full items-center justify-center rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  className="inline-flex w-full items-center justify-center rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200"
                 >
                   View in notifications
                 </Link>

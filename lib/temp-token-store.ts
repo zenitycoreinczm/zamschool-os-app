@@ -9,7 +9,7 @@ import {
   storeTempToken as redisStore,
   readTempToken as redisRead,
   clearTempToken as redisClear,
-} from "@/lib/redis-temp";
+} from "@/lib/redis/temp";
 
 // ── Store ──────────────────────────────────────────────────────────
 
@@ -51,7 +51,7 @@ export async function storeOtpToken(
               "[temp-token-store] Expired cleanup failed:",
               error.message,
             );
-        })
+        }),
     ).catch(() => {});
 
     await supabaseAdmin.from("temp_tokens").insert({

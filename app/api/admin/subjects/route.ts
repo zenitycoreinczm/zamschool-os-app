@@ -1,9 +1,17 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { z } from "zod";
-import { applyRateLimit, getClientIp, parseJsonWithSchema, safeErrorMessage } from "@/lib/server-guards";
+import {
+  applyRateLimit,
+  getClientIp,
+  parseJsonWithSchema,
+  safeErrorMessage,
+} from "@/lib/server-guards";
 import { requireAdminContext } from "@/lib/server-auth";
 import { requireFeatureAccess } from "@/lib/feature-permissions";
+import { auditDomainWrite } from "@/lib/audit-domain";
+import { enforceRouteAccess } from "@/lib/route-enforcement";
+import { invalidateByTag } from "@/lib/enhanced-cache";
 
 const createSubjectSchema = z.object({
   name: z.string().min(1),
@@ -32,16 +40,23 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to fetch subjects") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to fetch subjects") },
+      { status: 500 },
+    );
   }
 }
 
 export async function POST(req: Request) {
   try {
-    const access = await requireAdminContext(req);
+    const access = await enforceRouteAccess(req, {
+      allowedRoles: ["ACADEMIC_ADMIN", "ADMIN", "SUPER_ADMIN"],
+      feature: "subjects",
+      featureAction: "create",
+      domain: "academic",
+      domainAction: "create",
+    });
     if (!access.ok) return access.response;
-    const perm = await requireFeatureAccess(access.context, "subjects", "create");
-    if (!perm.ok) return perm.response;
     const { schoolId } = access.context;
     const ip = getClientIp(req);
     const rate = await applyRateLimit({
@@ -52,7 +67,7 @@ export async function POST(req: Request) {
     if (!rate.allowed) {
       return NextResponse.json(
         { error: "Too many requests. Please try again shortly." },
-        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } }
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
       );
     }
 
@@ -72,18 +87,36 @@ export async function POST(req: Request) {
 
     if (error) throw error;
 
+    await auditDomainWrite({
+      schoolId,
+      userId: access.context.userId,
+      action: "subjects.create",
+      entityType: "subject",
+      entityId: data.id,
+      newData: data,
+      ipAddress: getClientIp(req),
+    });
+
+    await invalidateByTag("dashboard");
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to create subject") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to create subject") },
+      { status: 500 },
+    );
   }
 }
 
 export async function PUT(req: Request) {
   try {
-    const access = await requireAdminContext(req);
+    const access = await enforceRouteAccess(req, {
+      allowedRoles: ["ACADEMIC_ADMIN", "ADMIN", "SUPER_ADMIN"],
+      feature: "subjects",
+      featureAction: "update",
+      domain: "academic",
+      domainAction: "update",
+    });
     if (!access.ok) return access.response;
-    const perm = await requireFeatureAccess(access.context, "subjects", "update");
-    if (!perm.ok) return perm.response;
     const { schoolId } = access.context;
     const ip = getClientIp(req);
     const rate = await applyRateLimit({
@@ -94,7 +127,7 @@ export async function PUT(req: Request) {
     if (!rate.allowed) {
       return NextResponse.json(
         { error: "Too many requests. Please try again shortly." },
-        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } }
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
       );
     }
 
@@ -114,24 +147,45 @@ export async function PUT(req: Request) {
 
     if (error) throw error;
 
+    await auditDomainWrite({
+      schoolId,
+      userId: access.context.userId,
+      action: "subjects.update",
+      entityType: "subject",
+      entityId: body.id,
+      newData: data,
+      ipAddress: getClientIp(req),
+    });
+
+    await invalidateByTag("dashboard");
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to update subject") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to update subject") },
+      { status: 500 },
+    );
   }
 }
 
 export async function DELETE(req: Request) {
   try {
-    const access = await requireAdminContext(req);
+    const access = await enforceRouteAccess(req, {
+      allowedRoles: ["ACADEMIC_ADMIN", "ADMIN", "SUPER_ADMIN"],
+      feature: "subjects",
+      featureAction: "delete",
+      domain: "academic",
+      domainAction: "delete",
+    });
     if (!access.ok) return access.response;
-    const perm = await requireFeatureAccess(access.context, "subjects", "delete");
-    if (!perm.ok) return perm.response;
     const { schoolId } = access.context;
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 
     if (!id) {
-      return NextResponse.json({ error: "Subject ID is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Subject ID is required" },
+        { status: 400 },
+      );
     }
 
     const { error } = await supabaseAdmin
@@ -142,8 +196,21 @@ export async function DELETE(req: Request) {
 
     if (error) throw error;
 
+    await auditDomainWrite({
+      schoolId,
+      userId: access.context.userId,
+      action: "subjects.delete",
+      entityType: "subject",
+      entityId: id,
+      ipAddress: getClientIp(req),
+    });
+
+    await invalidateByTag("dashboard");
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to delete subject") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to delete subject") },
+      { status: 500 },
+    );
   }
 }

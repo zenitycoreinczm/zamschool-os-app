@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { z } from "zod";
-import { applyRateLimit, getClientIp, parseJsonWithSchema, safeErrorMessage } from "@/lib/server-guards";
+import {
+  applyRateLimit,
+  getClientIp,
+  parseJsonWithSchema,
+  safeErrorMessage,
+} from "@/lib/server-guards";
 import { requireAdminContext } from "@/lib/server-auth";
 import { requireFeatureAccess } from "@/lib/feature-permissions";
+import { assertDomainAccess } from "@/lib/domain-ownership";
+import { createAuditLog } from "@/lib/audit-log";
 import { validateAdminManagedAssignmentTarget } from "@/lib/teacher-assignment-contract";
 import {
   buildTeacherProfileLookup,
@@ -37,12 +44,16 @@ export async function GET(req: Request) {
     if (!access.ok) return access.response;
     const { schoolId } = access.context;
     if (!schoolId) {
-      return NextResponse.json({ error: "No school linked to this admin account" }, { status: 403 });
+      return NextResponse.json(
+        { error: "No school linked to this admin account" },
+        { status: 403 },
+      );
     }
 
     const { data, error } = await supabaseAdmin
       .from("assignments")
-      .select(`
+      .select(
+        `
         *,
         subjects(name),
         classes(name),
@@ -51,15 +62,22 @@ export async function GET(req: Request) {
           profile_id,
           profiles!teachers_profile_id_fkey(id, first_name, last_name, email)
         )
-      `)
+      `,
+      )
       .eq("school_id", schoolId)
       .order("created_at", { ascending: false });
 
     if (error) throw error;
 
-    return NextResponse.json({ success: true, data: await attachTeacherProfiles(data || [], schoolId) });
+    return NextResponse.json({
+      success: true,
+      data: await attachTeacherProfiles(data || [], schoolId),
+    });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to fetch assignments") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to fetch assignments") },
+      { status: 500 },
+    );
   }
 }
 
@@ -67,11 +85,26 @@ export async function POST(req: Request) {
   try {
     const access = await requireAdminContext(req);
     if (!access.ok) return access.response;
-    const perm = await requireFeatureAccess(access.context, "assignments", "create");
+    const perm = await requireFeatureAccess(
+      access.context,
+      "assignments",
+      "create",
+    );
     if (!perm.ok) return perm.response;
-    const { schoolId } = access.context;
+    const domain = assertDomainAccess({
+      domain: "academic",
+      role: access.context.role,
+      action: "create",
+    });
+    if (!domain.ok) {
+      return NextResponse.json({ error: domain.error }, { status: 403 });
+    }
+    const { schoolId, userId } = access.context;
     if (!schoolId) {
-      return NextResponse.json({ error: "No school linked to this admin account" }, { status: 403 });
+      return NextResponse.json(
+        { error: "No school linked to this admin account" },
+        { status: 403 },
+      );
     }
     const ip = getClientIp(req);
     const rate = await applyRateLimit({
@@ -82,7 +115,7 @@ export async function POST(req: Request) {
     if (!rate.allowed) {
       return NextResponse.json(
         { error: "Too many requests. Please try again shortly." },
-        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } }
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
       );
     }
 
@@ -94,7 +127,10 @@ export async function POST(req: Request) {
       teacherId: body.teacherId,
     });
     if (!assignmentTarget.ok) {
-      return NextResponse.json({ error: assignmentTarget.error }, { status: assignmentTarget.status });
+      return NextResponse.json(
+        { error: assignmentTarget.error },
+        { status: assignmentTarget.status },
+      );
     }
 
     const payload: Record<string, any> = {
@@ -116,9 +152,22 @@ export async function POST(req: Request) {
 
     if (error) throw error;
 
+    await createAuditLog({
+      schoolId,
+      userId,
+      action: "assignments.create",
+      entityType: "assignment",
+      entityId: data.id,
+      newData: data,
+      ipAddress: ip,
+    });
+
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to create assignment") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to create assignment") },
+      { status: 500 },
+    );
   }
 }
 
@@ -126,11 +175,26 @@ export async function PUT(req: Request) {
   try {
     const access = await requireAdminContext(req);
     if (!access.ok) return access.response;
-    const perm = await requireFeatureAccess(access.context, "assignments", "update");
+    const perm = await requireFeatureAccess(
+      access.context,
+      "assignments",
+      "update",
+    );
     if (!perm.ok) return perm.response;
-    const { schoolId } = access.context;
+    const domain = assertDomainAccess({
+      domain: "academic",
+      role: access.context.role,
+      action: "update",
+    });
+    if (!domain.ok) {
+      return NextResponse.json({ error: domain.error }, { status: 403 });
+    }
+    const { schoolId, userId } = access.context;
     if (!schoolId) {
-      return NextResponse.json({ error: "No school linked to this admin account" }, { status: 403 });
+      return NextResponse.json(
+        { error: "No school linked to this admin account" },
+        { status: 403 },
+      );
     }
     const ip = getClientIp(req);
     const rate = await applyRateLimit({
@@ -141,14 +205,17 @@ export async function PUT(req: Request) {
     if (!rate.allowed) {
       return NextResponse.json(
         { error: "Too many requests. Please try again shortly." },
-        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } }
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
       );
     }
 
     const body = await parseJsonWithSchema(req, updateAssignmentSchema);
     const currentAssignment = await fetchAssignmentRecord(body.id, schoolId);
     if (!currentAssignment) {
-      return NextResponse.json({ error: "Assignment not found in this school" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Assignment not found in this school" },
+        { status: 404 },
+      );
     }
 
     const mergedAssignment = {
@@ -163,7 +230,10 @@ export async function PUT(req: Request) {
       teacherId: mergedAssignment.teacherId,
     });
     if (!assignmentTarget.ok) {
-      return NextResponse.json({ error: assignmentTarget.error }, { status: assignmentTarget.status });
+      return NextResponse.json(
+        { error: assignmentTarget.error },
+        { status: assignmentTarget.status },
+      );
     }
 
     const payload: Record<string, any> = {};
@@ -185,9 +255,23 @@ export async function PUT(req: Request) {
 
     if (error) throw error;
 
+    await createAuditLog({
+      schoolId,
+      userId,
+      action: "assignments.update",
+      entityType: "assignment",
+      entityId: body.id,
+      oldData: currentAssignment,
+      newData: data,
+      ipAddress: ip,
+    });
+
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to update assignment") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to update assignment") },
+      { status: 500 },
+    );
   }
 }
 
@@ -195,17 +279,43 @@ export async function DELETE(req: Request) {
   try {
     const access = await requireAdminContext(req);
     if (!access.ok) return access.response;
-    const perm = await requireFeatureAccess(access.context, "assignments", "delete");
+    const perm = await requireFeatureAccess(
+      access.context,
+      "assignments",
+      "delete",
+    );
     if (!perm.ok) return perm.response;
-    const { schoolId } = access.context;
+    const domain = assertDomainAccess({
+      domain: "academic",
+      role: access.context.role,
+      action: "delete",
+    });
+    if (!domain.ok) {
+      return NextResponse.json({ error: domain.error }, { status: 403 });
+    }
+    const { schoolId, userId } = access.context;
     if (!schoolId) {
-      return NextResponse.json({ error: "No school linked to this admin account" }, { status: 403 });
+      return NextResponse.json(
+        { error: "No school linked to this admin account" },
+        { status: 403 },
+      );
     }
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 
     if (!id) {
-      return NextResponse.json({ error: "Assignment ID is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Assignment ID is required" },
+        { status: 400 },
+      );
+    }
+
+    const existing = await fetchAssignmentRecord(id, schoolId);
+    if (!existing) {
+      return NextResponse.json(
+        { error: "Assignment not found in this school" },
+        { status: 404 },
+      );
     }
 
     const { error } = await supabaseAdmin
@@ -216,9 +326,22 @@ export async function DELETE(req: Request) {
 
     if (error) throw error;
 
+    await createAuditLog({
+      schoolId,
+      userId,
+      action: "assignments.delete",
+      entityType: "assignment",
+      entityId: id,
+      oldData: existing,
+      ipAddress: getClientIp(req),
+    });
+
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to delete assignment") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to delete assignment") },
+      { status: 500 },
+    );
   }
 }
 
@@ -256,7 +379,11 @@ async function fetchAssignmentRecord(id: string, schoolId: string) {
   return data;
 }
 
-async function fetchSchoolOwnedRow(table: "classes" | "subjects", id: string, schoolId: string) {
+async function fetchSchoolOwnedRow(
+  table: "classes" | "subjects",
+  id: string,
+  schoolId: string,
+) {
   const { data, error } = await supabaseAdmin
     .from(table)
     .select("id, school_id")
@@ -268,14 +395,25 @@ async function fetchSchoolOwnedRow(table: "classes" | "subjects", id: string, sc
   return data;
 }
 
-async function fetchTeacherAssignmentReferences(schoolId: string, teacherId: string | null | undefined) {
+async function fetchTeacherAssignmentReferences(
+  schoolId: string,
+  teacherId: string | null | undefined,
+) {
   const normalizedTeacherId = String(teacherId || "").trim();
   if (!normalizedTeacherId) {
     return { teacherProfiles: [], teacherRows: [] };
   }
 
-  const teacherProfiles: Array<{ id: string; school_id: string | null; role: string | null }> = [];
-  const teacherRows: Array<{ id: string; profile_id: string | null; school_id: string | null }> = [];
+  const teacherProfiles: Array<{
+    id: string;
+    school_id: string | null;
+    role: string | null;
+  }> = [];
+  const teacherRows: Array<{
+    id: string;
+    profile_id: string | null;
+    school_id: string | null;
+  }> = [];
 
   const { data: directProfile, error: directProfileError } = await supabaseAdmin
     .from("profiles")
@@ -294,7 +432,10 @@ async function fetchTeacherAssignmentReferences(schoolId: string, teacherId: str
     .eq("school_id", schoolId)
     .or(`id.eq.${normalizedTeacherId},profile_id.eq.${normalizedTeacherId}`);
 
-  if (teacherRowResult.error && !isMissingRelationError(teacherRowResult.error)) {
+  if (
+    teacherRowResult.error &&
+    !isMissingRelationError(teacherRowResult.error)
+  ) {
     throw teacherRowResult.error;
   }
 
@@ -321,10 +462,16 @@ async function fetchTeacherAssignmentReferences(schoolId: string, teacherId: str
   return { teacherProfiles, teacherRows };
 }
 
-function isMissingRelationError(error: { code?: string | null; message?: string | null } | null | undefined) {
+function isMissingRelationError(
+  error: { code?: string | null; message?: string | null } | null | undefined,
+) {
   const code = String(error?.code || "");
   const message = String(error?.message || "").toLowerCase();
-  return code === "42P01" || code === "PGRST205" || message.includes("does not exist");
+  return (
+    code === "42P01" ||
+    code === "PGRST205" ||
+    message.includes("does not exist")
+  );
 }
 
 async function attachTeacherProfiles(rows: any[], schoolId: string) {
@@ -332,19 +479,25 @@ async function attachTeacherProfiles(rows: any[], schoolId: string) {
     new Set(
       (rows || [])
         .map((row) => String(row?.teacher_id || "").trim())
-        .filter(Boolean)
-    )
+        .filter(Boolean),
+    ),
   );
 
   if (teacherIds.length === 0) {
     return hydrateAssignmentRows(rows, {});
   }
 
-  const teacherProfileLookup = await fetchTeacherProfileLookup(schoolId, teacherIds);
+  const teacherProfileLookup = await fetchTeacherProfileLookup(
+    schoolId,
+    teacherIds,
+  );
   return hydrateAssignmentRows(rows, teacherProfileLookup);
 }
 
-async function fetchTeacherProfileLookup(schoolId: string, teacherIds: string[]) {
+async function fetchTeacherProfileLookup(
+  schoolId: string,
+  teacherIds: string[],
+) {
   const [directProfilesResult, teacherRowsResult] = await Promise.all([
     supabaseAdmin
       .from("profiles")
@@ -358,21 +511,28 @@ async function fetchTeacherProfileLookup(schoolId: string, teacherIds: string[])
   ]);
 
   if (directProfilesResult.error) throw directProfilesResult.error;
-  if (teacherRowsResult.error && !isMissingRelationError(teacherRowsResult.error)) {
+  if (
+    teacherRowsResult.error &&
+    !isMissingRelationError(teacherRowsResult.error)
+  ) {
     throw teacherRowsResult.error;
   }
 
   const teacherRows = (teacherRowsResult.data || []).filter(
-    (row: any) => teacherIds.includes(String(row?.id || "")) || teacherIds.includes(String(row?.profile_id || ""))
+    (row: any) =>
+      teacherIds.includes(String(row?.id || "")) ||
+      teacherIds.includes(String(row?.profile_id || "")),
   );
 
-  const knownProfileIds = new Set((directProfilesResult.data || []).map((profile: any) => String(profile.id)));
+  const knownProfileIds = new Set(
+    (directProfilesResult.data || []).map((profile: any) => String(profile.id)),
+  );
   const missingProfileIds = Array.from(
     new Set(
       teacherRows
         .map((row: any) => String(row?.profile_id || "").trim())
-        .filter((profileId) => profileId && !knownProfileIds.has(profileId))
-    )
+        .filter((profileId) => profileId && !knownProfileIds.has(profileId)),
+    ),
   );
 
   let linkedProfiles: any[] = [];

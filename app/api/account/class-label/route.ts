@@ -17,6 +17,7 @@ const ALLOWED_ROLES = [
   "HR_ADMIN",
   "ICT_ADMIN",
   "DISCIPLINE_ADMIN",
+  "REGISTRAR",
   "GUIDANCE_OFFICE",
   "SUPER_ADMIN",
 ] as const;
@@ -26,22 +27,26 @@ export async function GET(req: Request) {
     const access = await requireActorContext(
       {
         allowedRoles: [...ALLOWED_ROLES],
-        requireSchool: false,
+        requireSchool: true,
       },
-      req
+      req,
     );
     if (!access.ok) return access.response;
 
     const { searchParams } = new URL(req.url);
     const classId = searchParams.get("classId");
     if (!classId) {
-      return NextResponse.json({ error: "classId query parameter is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "classId query parameter is required" },
+        { status: 400 },
+      );
     }
 
     const { data: classRow, error } = await supabaseAdmin
       .from("classes")
       .select("name, grade_level")
       .eq("id", classId)
+      .eq("school_id", access.context.schoolId)
       .maybeSingle();
 
     if (error) throw error;
@@ -59,7 +64,7 @@ export async function GET(req: Request) {
   } catch (error: unknown) {
     return NextResponse.json(
       { error: safeErrorMessage(error, "Failed to resolve class label") },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

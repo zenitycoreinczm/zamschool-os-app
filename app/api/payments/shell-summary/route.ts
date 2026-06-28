@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { requireFeatureAccess } from "@/lib/feature-permissions";
 import { safeErrorMessage } from "@/lib/server-guards";
 import { requirePaymentsContext } from "@/lib/server-auth";
 import { supabaseAdmin } from "@/lib/supabase";
@@ -9,6 +10,8 @@ export async function GET(req: Request) {
   try {
     const access = await requirePaymentsContext(req);
     if (!access.ok) return access.response;
+    const perm = await requireFeatureAccess(access.context, "payments", "read");
+    if (!perm.ok) return perm.response;
 
     const schoolId = access.context.schoolId;
     if (!schoolId) {
@@ -24,7 +27,10 @@ export async function GET(req: Request) {
     }
 
     const [paymentsResult, studentCountResult] = await Promise.all([
-      supabaseAdmin.from("payments").select("amount, status").eq("school_id", schoolId),
+      supabaseAdmin
+        .from("payments")
+        .select("amount, status")
+        .eq("school_id", schoolId),
       supabaseAdmin
         .from("profiles")
         .select("id", { count: "exact", head: true })
@@ -59,7 +65,7 @@ export async function GET(req: Request) {
   } catch (error: unknown) {
     return NextResponse.json(
       { error: safeErrorMessage(error, "Failed to load payments summary") },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

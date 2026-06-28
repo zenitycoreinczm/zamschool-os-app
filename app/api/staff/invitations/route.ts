@@ -7,17 +7,22 @@ import {
   parseJsonWithSchema,
   safeErrorMessage,
 } from "@/lib/server-guards";
+import { tenantActorRateLimitKey } from "@/lib/tenant-context";
 import { requireActorContext } from "@/lib/server-auth";
 import { requireFeatureAccess } from "@/lib/feature-permissions";
 import { nanoid } from "nanoid";
 import {
   buildCreatedAuthUserMetadata,
+  buildCreatedProfilePayload,
   generateTemporaryPassword,
+  hashTemporaryPassword,
 } from "@/lib/account-state";
 import { roleToStoredValue } from "@/lib/roles";
 import { createAuditLog } from "@/lib/audit-log";
 import { canActorCreateSchoolRole } from "@/lib/account-create-policy";
 import { sendAccountCredentialsEmail } from "@/lib/send-account-credentials";
+import { invalidateActorCaches } from "@/lib/invalidate-actor-caches";
+import { createOrUpdateAuthUserWithTemporaryPassword } from "@/lib/auth-admin-users";
 const createInvitationSchema = z.object({
   email: z.string().email(),
   role: z.enum([
@@ -31,12 +36,14 @@ const createInvitationSchema = z.object({
     "hr_admin",
     "ict_admin",
     "discipline_admin",
+    "registrar",
   ]),
   department: z.string().max(120).optional(),
   position: z.string().max(120).optional(),
   first_name: z.string().min(1).max(120),
   last_name: z.string().min(1).max(120),
   phone: z.string().max(40).optional(),
+  send_email: z.boolean().optional().default(false),
 });
 const INVITATION_PUBLIC_COLUMNS =
   "id,school_id,invited_by,email,role,department,position,first_name,last_name,phone,token,expires_at,accepted_at,accepted_by,revoked_at,auth_user_id,created_at";
@@ -48,16 +55,37 @@ function stripSensitiveFields(record: Record<string, unknown>) {
   void temporary_password;
   return safe;
 }
+
+function stripUnknownColumn(
+  payload: Record<string, unknown>,
+  message: string,
+): Record<string, unknown> | null {
+  // PostgREST emits either a Postgres 42703 error ("column X does not
+  // exist") or a PGRST204 error ("Could not find the 'X' column of 'table'
+  // in the schema cache").  Both need to trigger the strip-and-retry path.
+  const pgMatch = message.match(
+    /column\s+(?:[a-z_]+\.)?([a-zA-Z0-9_]+)\s+does not exist/i,
+  );
+  const pgrstMatch = message.match(
+    /Could not find the '([a-zA-Z0-9_]+)' column/i,
+  );
+  const columnName = pgMatch?.[1] || pgrstMatch?.[1];
+  if (columnName && columnName in payload) {
+    const { [columnName]: _removed, ...rest } = payload;
+    void _removed;
+    return rest;
+  }
+  return null;
+}
+// Staff invitations are restricted to the Head Teacher (PRINCIPAL) and
+// platform super admin.  Other admin roles (HR_ADMIN, ICT_ADMIN, etc.)
+// manage staff records through the Users page, not the invitation flow.
+const STAFF_INVITATION_ROLES = ["PRINCIPAL", "SUPER_ADMIN"] as const;
+
 export async function GET(req: Request) {
   const access = await requireActorContext(
     {
-      allowedRoles: [
-        "PRINCIPAL",
-        "DEPUTY_HEAD",
-        "HR_ADMIN",
-        "ADMIN",
-        "SUPER_ADMIN",
-      ],
+      allowedRoles: [...STAFF_INVITATION_ROLES],
       requireSchool: true,
     },
     req,
@@ -75,9 +103,9 @@ export async function GET(req: Request) {
       )
       .eq("school_id", access.context.schoolId)
       .order("created_at", { ascending: false });
-    if (status === "pending")
-      query = query.is("accepted_at", null).is("revoked_at", null);
-    if (status === "accepted") query = query.not("accepted_at", "is", null);
+    if (status === "pending" || status === "active")
+      query = query.is("revoked_at", null);
+    if (status === "accepted") query = query.is("revoked_at", null);
     if (status === "revoked") query = query.not("revoked_at", "is", null);
     const { data, error } = await query.limit(100);
     if (error) throw error;
@@ -92,18 +120,19 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const access = await requireActorContext(
     {
-      allowedRoles: [
-        "PRINCIPAL",
-        "DEPUTY_HEAD",
-        "HR_ADMIN",
-        "ADMIN",
-        "SUPER_ADMIN",
-      ],
+      allowedRoles: [...STAFF_INVITATION_ROLES],
       requireSchool: true,
     },
     req,
   );
   if (!access.ok) return access.response;
+  if (!access.context.schoolId) {
+    return NextResponse.json(
+      { error: "No school linked to this account" },
+      { status: 403 },
+    );
+  }
+  const schoolId = access.context.schoolId;
   const perm = await requireFeatureAccess(access.context, "users", "create");
   if (!perm.ok) {
     console.error("Permission denied for staff invitation:", perm.response);
@@ -111,7 +140,12 @@ export async function POST(req: Request) {
   }
   const ip = getClientIp(req);
   const rate = await applyRateLimit({
-    key: `invitations:${access.context.schoolId}:${ip}`,
+    key: tenantActorRateLimitKey({
+      scope: "invitations",
+      schoolId: access.context.schoolId,
+      req,
+      userId: access.context.userId,
+    }),
     limit: 30,
     windowMs: 60_000,
     failOpen: true,
@@ -127,6 +161,7 @@ export async function POST(req: Request) {
     const body = await parseJsonWithSchema(req, createInvitationSchema);
     const { email, role, department, position, first_name, last_name, phone } =
       body;
+    const sendEmail = body.send_email === true;
     if (!email || !role || !first_name || !last_name) {
       return NextResponse.json(
         {
@@ -175,31 +210,8 @@ export async function POST(req: Request) {
         { status: 409 },
       );
     }
-    // Delete old staff_invitations (accepted or revoked) for this email
-    // Also clean up orphaned auth users from those old invitations
-    const { data: oldInvites } = await supabaseAdmin
-      .from("staff_invitations")
-      .select("id, auth_user_id")
-      .eq("school_id", access.context.schoolId)
-      .eq("email", email)
-      .or("accepted_at.not.is.null,revoked_at.not.is.null");
-
-    if (oldInvites && oldInvites.length > 0) {
-      for (const old of oldInvites) {
-        if (old.auth_user_id) {
-          const { error: delErr } = await supabaseAdmin.auth.admin.deleteUser(
-            old.auth_user_id,
-          );
-          if (delErr) {
-            console.error(
-              `[invite] Failed to clean up orphaned auth user ${old.auth_user_id}:`,
-              delErr,
-            );
-          }
-        }
-      }
-    }
-
+    // Delete stale invitation rows, but keep any matching auth user and reset
+    // its password below so the displayed temporary password always works.
     await supabaseAdmin
       .from("staff_invitations")
       .delete()
@@ -212,23 +224,66 @@ export async function POST(req: Request) {
       Date.now() + 7 * 24 * 60 * 60 * 1000,
     ).toISOString();
     step = "auth_user_creation";
-    const createAuth = await supabaseAdmin.auth.admin.createUser({
-      email: email.toLowerCase().trim(),
-      password: temporaryPassword,
-      email_confirm: true,
-      user_metadata: buildCreatedAuthUserMetadata({
+    const authResult = await createOrUpdateAuthUserWithTemporaryPassword({
+      email,
+      temporaryPassword,
+      userMetadata: buildCreatedAuthUserMetadata({
         firstName: first_name,
         lastName: last_name,
         role: normalizedRole,
       }),
     });
-    if (createAuth.error || !createAuth.data.user) {
-      console.error("Failed to create auth user:", createAuth.error);
-      throw new Error(
-        createAuth.error?.message || "Failed to create invited auth user",
-      );
+    const authUserId = authResult.user.id;
+
+    step = "profile_creation";
+    const profilePayload = buildCreatedProfilePayload({
+      authUserId,
+      schoolId,
+      role: normalizedRole,
+      firstName: first_name,
+      lastName: last_name,
+      email: email.toLowerCase().trim(),
+      phone: phone || null,
+      profileExtras: {
+        department: department || null,
+        ...(position ? { position } : {}),
+      },
+    });
+
+    try {
+      const { error: profileError } = await supabaseAdmin
+        .from("profiles")
+        .insert(profilePayload);
+      if (profileError) {
+        const message = String(profileError.message || "");
+        const code = String(profileError.code || "");
+        const isMissingColumn =
+          message.includes("does not exist") ||
+          code === "42703" ||
+          code === "PGRST204" ||
+          /Could not find the '\w+' column/i.test(message);
+        if (isMissingColumn) {
+          const stripped = stripUnknownColumn(profilePayload, message);
+          if (stripped) {
+            const { error: retryError } = await supabaseAdmin
+              .from("profiles")
+              .insert(stripped);
+            if (retryError) throw retryError;
+          } else {
+            throw profileError;
+          }
+        } else {
+          throw profileError;
+        }
+      }
+      await invalidateActorCaches(authUserId);
+    } catch (profileErr) {
+      if (authResult.created) {
+        await supabaseAdmin.auth.admin.deleteUser(authUserId);
+      }
+      throw profileErr;
     }
-    const authUserId = createAuth.data.user.id;
+
     step = "invitation_insert";
     const { data, error } = await supabaseAdmin
       .from("staff_invitations")
@@ -244,16 +299,19 @@ export async function POST(req: Request) {
         last_name,
         phone: phone || null,
         token,
-        temporary_password: temporaryPassword,
-        temp_password_hash: temporaryPassword,
+        temporary_password: null,
+        temp_password_hash: hashTemporaryPassword(temporaryPassword),
         auth_user_id: authUserId,
         expires_at: expiresAt,
+        status: "accepted",
       })
       .select(INVITATION_PUBLIC_COLUMNS)
       .single();
     if (error) {
       console.error("Failed to insert staff invitation:", error);
-      await supabaseAdmin.auth.admin.deleteUser(authUserId);
+      if (authResult.created) {
+        await supabaseAdmin.auth.admin.deleteUser(authUserId);
+      }
       throw error;
     }
     const acceptUrl = `${process.env.NEXT_PUBLIC_APP_ORIGIN || "http://localhost:3000"}/accept-invitation?token=${token}`;
@@ -268,32 +326,43 @@ export async function POST(req: Request) {
         role: normalizedRole,
         department: department || null,
         position: position || null,
+        directCreate: true,
       },
       ipAddress: ip,
     });
-    const emailPromise = sendAccountCredentialsEmail({
-      to: email.toLowerCase().trim(),
-      firstName: first_name,
-      role: normalizedRole,
-      temporaryPassword,
-      acceptUrl,
-    });
 
-    emailPromise
-      .then((result) => {
-        console.log(
-          `[invite] Credentials email sent to ${email} — messageId=${result.messageId || "N/A"}`,
-        );
-      })
-      .catch((err) => {
-        console.error("[invite] Background email failed:", err);
+    let credentialsEmailSent = false;
+    if (sendEmail) {
+      const emailPromise = sendAccountCredentialsEmail({
+        to: email.toLowerCase().trim(),
+        firstName: first_name,
+        role: normalizedRole,
+        temporaryPassword,
+        acceptUrl,
       });
+      emailPromise
+        .then((result) => {
+          console.log(
+            `[invite] Credentials email sent to ${email} — messageId=${result.messageId || "N/A"}`,
+          );
+        })
+        .catch((err) => {
+          console.error("[invite] Background email failed:", err);
+        });
+      credentialsEmailSent = true;
+    }
+
     const safeData = stripSensitiveFields(
       data as unknown as Record<string, unknown>,
     );
     return NextResponse.json({
       success: true,
-      data: { ...safeData, accept_url: acceptUrl },
+      data: {
+        ...safeData,
+        accept_url: acceptUrl,
+        temporary_password: temporaryPassword,
+        credentials_email_sent: credentialsEmailSent,
+      },
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
@@ -325,13 +394,7 @@ export async function POST(req: Request) {
 export async function DELETE(req: Request) {
   const access = await requireActorContext(
     {
-      allowedRoles: [
-        "PRINCIPAL",
-        "DEPUTY_HEAD",
-        "HR_ADMIN",
-        "ADMIN",
-        "SUPER_ADMIN",
-      ],
+      allowedRoles: [...STAFF_INVITATION_ROLES],
       requireSchool: true,
     },
     req,
@@ -351,25 +414,25 @@ export async function DELETE(req: Request) {
     // Fetch the invitation to get the auth_user_id before revoking
     const { data: invite } = await supabaseAdmin
       .from("staff_invitations")
-      .select("id, auth_user_id, email")
+      .select("id, auth_user_id, email, revoked_at")
       .eq("id", invitationId)
       .eq("school_id", access.context.schoolId)
-      .is("accepted_at", null)
+      .is("revoked_at", null)
       .maybeSingle();
 
     if (!invite) {
       return NextResponse.json(
-        { error: "Invitation not found or already accepted" },
+        { error: "Invitation not found or already revoked" },
         { status: 404 },
       );
     }
 
     const { error } = await supabaseAdmin
       .from("staff_invitations")
-      .update({ revoked_at: new Date().toISOString() })
+      .update({ revoked_at: new Date().toISOString(), status: "revoked" })
       .eq("id", invitationId)
       .eq("school_id", access.context.schoolId)
-      .is("accepted_at", null);
+      .is("revoked_at", null);
     if (error) throw error;
 
     // Clean up the orphaned auth user created during the invitation

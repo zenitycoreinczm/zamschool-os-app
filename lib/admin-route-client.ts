@@ -1,17 +1,26 @@
 import { fetchWithOfflineSupport } from "./offline-fetch.ts";
 
+function getCsrfTokenFromCookie(): string | null {
+  if (typeof document === "undefined") return null;
+  const raw = document.cookie;
+  if (!raw) return null;
+  for (const pair of raw.split(";")) {
+    const idx = pair.indexOf("=");
+    if (idx === -1) continue;
+    const name = pair.substring(0, idx).trim();
+    if (name === "csrf-token") {
+      const value = pair.substring(idx + 1).trim();
+      return value || null;
+    }
+  }
+  return null;
+}
+
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
 export type AdminRouteRequestInit = RequestInit & {
   params?: Record<string, string | number | boolean | null | undefined>;
 };
-
-type AdminRouteAuthTokenProvider = () => Promise<string | null> | string | null;
-
-const defaultAuthTokenProvider: AdminRouteAuthTokenProvider = async () => {
-  const { getClientAccessToken } = await import("@/lib/supabase-auth-client");
-  return getClientAccessToken();
-};
-
-let authTokenProvider: AdminRouteAuthTokenProvider = defaultAuthTokenProvider;
 
 export async function parseAdminRouteResponse(response: Response) {
   let payload: any = null;
@@ -24,7 +33,9 @@ export async function parseAdminRouteResponse(response: Response) {
 
   if (!response.ok) {
     const message =
-      (payload && typeof payload === "object" && (payload.error || payload.message)) ||
+      (payload &&
+        typeof payload === "object" &&
+        (payload.error || payload.message)) ||
       "Request failed";
     throw new Error(String(message));
   }
@@ -32,7 +43,10 @@ export async function parseAdminRouteResponse(response: Response) {
   return payload;
 }
 
-export async function adminRequest(path: string, init: AdminRouteRequestInit = {}) {
+export async function adminRequest(
+  path: string,
+  init: AdminRouteRequestInit = {},
+) {
   const url = new URL(path, globalThis.location?.origin || "http://localhost");
   const headers = new Headers(init.headers);
 
@@ -43,9 +57,13 @@ export async function adminRequest(path: string, init: AdminRouteRequestInit = {
     }
   }
 
-  const token = await authTokenProvider();
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
+  // Inject CSRF token for mutating requests (POST/PUT/PATCH/DELETE)
+  const method = String(init.method || "GET").toUpperCase();
+  if (MUTATING_METHODS.has(method)) {
+    const csrf = getCsrfTokenFromCookie();
+    if (csrf) {
+      headers.set("X-CSRF-Token", csrf);
+    }
   }
 
   const response = await fetchWithOfflineSupport(url.toString(), {
@@ -58,11 +76,18 @@ export async function adminRequest(path: string, init: AdminRouteRequestInit = {
   return parseAdminRouteResponse(response);
 }
 
-export function adminGet(path: string, init: Omit<AdminRouteRequestInit, "method"> = {}) {
+export function adminGet(
+  path: string,
+  init: Omit<AdminRouteRequestInit, "method"> = {},
+) {
   return adminRequest(path, { ...init, method: "GET" });
 }
 
-export function adminPost<TBody>(path: string, body: TBody, init: Omit<AdminRouteRequestInit, "method" | "body"> = {}) {
+export function adminPost<TBody>(
+  path: string,
+  body: TBody,
+  init: Omit<AdminRouteRequestInit, "method" | "body"> = {},
+) {
   return adminRequest(path, {
     ...init,
     method: "POST",
@@ -71,7 +96,10 @@ export function adminPost<TBody>(path: string, body: TBody, init: Omit<AdminRout
   });
 }
 
-export function adminDelete(path: string, init: Omit<AdminRouteRequestInit, "method"> = {}) {
+export function adminDelete(
+  path: string,
+  init: Omit<AdminRouteRequestInit, "method"> = {},
+) {
   return adminRequest(path, { ...init, method: "DELETE" });
 }
 
@@ -87,16 +115,9 @@ export function buildFinanceMutationPayload(form: {
     category: normalizeOptionalString(form.category),
     amount: normalizeAmount(form.amount),
     description: normalizeOptionalString(form.description),
-    transactionDate: form.transaction_date || new Date().toISOString().slice(0, 10),
+    transactionDate:
+      form.transaction_date || new Date().toISOString().slice(0, 10),
   };
-}
-
-export function setAdminRouteAuthTokenProvider(provider: AdminRouteAuthTokenProvider) {
-  authTokenProvider = provider;
-}
-
-export function resetAdminRouteAuthTokenProvider() {
-  authTokenProvider = defaultAuthTokenProvider;
 }
 
 function jsonHeaders(existingHeaders?: HeadersInit) {

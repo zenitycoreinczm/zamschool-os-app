@@ -35,7 +35,7 @@ export async function GET(req: Request) {
 
     const data = await fetchClassRows(schoolId);
     const response = NextResponse.json({ success: true, data });
-    response.headers.set("Cache-Control", "private, max-age=20, stale-while-revalidate=120");
+    response.headers.set("Cache-Control", "private, no-store, max-age=0, must-revalidate");
     return response;
   } catch (error: unknown) {
     return NextResponse.json({ error: safeErrorMessage(error, "Failed to fetch classes") }, { status: 500 });

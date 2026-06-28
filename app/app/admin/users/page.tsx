@@ -33,6 +33,8 @@ import { toast } from "sonner";
 import { AccountsSetupGuide } from "@/components/admin/AccountsSetupGuide";
 import { AdminPageHero } from "@/components/admin/AdminPageHero";
 import { StaffInvitePanel } from "@/components/admin/StaffInvitePanel";
+import { useWorkspaceContext } from "@/components/WorkspaceContextProvider";
+import { normalizeRole } from "@/lib/roles";
 
 type TabKey = "students" | "teachers" | "parents";
 type GenericRow = Record<string, any>;
@@ -105,6 +107,14 @@ const EMPTY_FORM: UserForm = {
 
 export default function AdminUsersPage() {
   const searchParams = useSearchParams();
+  const { role: workspaceRole } = useWorkspaceContext();
+  const normalizedWorkspaceRole = normalizeRole(workspaceRole);
+  // Only the Head Teacher (PRINCIPAL) and platform super admin can invite
+  // staff members.  All other roles see only the student/teacher/parent
+  // registration interface.
+  const canInviteStaff =
+    normalizedWorkspaceRole === "PRINCIPAL" ||
+    normalizedWorkspaceRole === "SUPER_ADMIN";
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -1073,7 +1083,11 @@ export default function AdminUsersPage() {
       <AdminPageHero
         eyebrow="School directory"
         title="Users & accounts"
-        description="Add students, parents, and teachers with the Add button and tabs below. Invite Deputy Head, Bursar, School Administrator, and other office roles in the Staff invitations section — not through Add student/teacher/parent."
+        description={
+          canInviteStaff
+            ? "Add students, parents, and teachers with the Add button and tabs below. Invite Deputy Head, Bursar, School Administrator, and other office roles in the Staff invitations section — not through Add student/teacher/parent."
+            : "Register students, parents, and teachers for your school. Use the Add button and tabs below to create accounts and assign classes."
+        }
         stats={[
           {
             label: "Students",
@@ -1096,13 +1110,17 @@ export default function AdminUsersPage() {
             icon: UsersRound,
             tone: "amber",
           },
-          {
-            label: "Office staff",
-            value: "Invites",
-            hint: "Section below ↓",
-            icon: ShieldCheck,
-            tone: "emerald",
-          },
+          ...(canInviteStaff
+            ? [
+                {
+                  label: "Office staff",
+                  value: "Invites",
+                  hint: "Section below ↓",
+                  icon: ShieldCheck,
+                  tone: "emerald" as const,
+                },
+              ]
+            : []),
         ]}
         actions={
           <>
@@ -1135,19 +1153,23 @@ export default function AdminUsersPage() {
         }
       />
 
-      <AccountsSetupGuide
-        onOpenStaffInvites={() => {
-          setStaffInvitesExpanded(true);
-          document
-            .getElementById("staff-invitations")
-            ?.scrollIntoView({ behavior: "smooth", block: "start" });
-        }}
-      />
+      {canInviteStaff && (
+        <AccountsSetupGuide
+          onOpenStaffInvites={() => {
+            setStaffInvitesExpanded(true);
+            document
+              .getElementById("staff-invitations")
+              ?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }}
+        />
+      )}
 
-      <StaffInvitePanel
-        expanded={staffInvitesExpanded}
-        onExpandedChange={setStaffInvitesExpanded}
-      />
+      {canInviteStaff && (
+        <StaffInvitePanel
+          expanded={staffInvitesExpanded}
+          onExpandedChange={setStaffInvitesExpanded}
+        />
+      )}
 
       <div className="rounded-2xl border border-gray-200 bg-white p-1.5 shadow-sm">
         <div className="grid grid-cols-3 gap-1">

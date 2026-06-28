@@ -45,7 +45,14 @@ export async function POST(req: Request) {
       );
     }
 
-    const schoolId = access.context.schoolId || "default";
+    const schoolId = access.context.schoolId;
+    if (!schoolId) {
+      return NextResponse.json(
+        { error: "No school linked to this account" },
+        { status: 403 },
+      );
+    }
+
     const profileId = access.context.profileId || access.context.userId;
     const {
       avatarUrl: protectedUrl,
@@ -61,6 +68,7 @@ export async function POST(req: Request) {
     await persistAvatarUrl({
       profileId,
       authUserId: access.context.userId,
+      schoolId,
       avatarUrl: protectedUrl,
     });
     const avatarUrl = protectedUrl;
@@ -86,12 +94,14 @@ export async function POST(req: Request) {
 async function persistAvatarUrl(input: {
   profileId: string;
   authUserId: string;
+  schoolId: string;
   avatarUrl: string;
 }) {
   const byProfileId = await supabaseAdmin
     .from("profiles")
     .update({ avatar_url: input.avatarUrl })
     .eq("id", input.profileId)
+    .eq("school_id", input.schoolId)
     .select("id")
     .maybeSingle();
 
@@ -107,6 +117,7 @@ async function persistAvatarUrl(input: {
     .from("profiles")
     .update({ avatar_url: input.avatarUrl })
     .eq("auth_user_id", input.authUserId)
+    .eq("school_id", input.schoolId)
     .select("id")
     .maybeSingle();
 

@@ -10,14 +10,14 @@ You should treat every page as if it were public. The application is multi-tenan
 
 Security is enforced at four layers. You must satisfy all of them; none is sufficient on its own.
 
-1. **Postgres RLS.** Every production table has row-level security enabled. Policies check role from `auth.jwt()` and school from the user's profile. Personal data is additionally scoped to `user_id`. See `docs/SUPABASE_SECURITY.md` (archived) for the policy taxonomy.
+1. **Postgres RLS.** Every production table has row-level security enabled. Policies check role from `auth.jwt()` and school from the user's profile. Personal data is additionally scoped to `user_id`. The current policy taxonomy lives inline in the baseline migration (`supabase/migrations/00000000000000_baseline.sql`) under each table's `create policy` statements.
 2. **API route guards.** Every API route under `app/api/*` calls `requireActorContext` or a role-specific guard (`requireTeacherContext`, `requireParentContext`, `requireStudentContext`) before reading or writing. The guards throw and return 401/403 if the user is missing or wrong-role.
 3. **Shell guards.** Each shell checks the user's role on mount and redirects away from paths that belong to a different role. `AdminShell` does this in `resolveWorkspaceRedirect` (`AdminShell.tsx`).
 4. **Rate limiting.** MFA routes, login, and password-reset are rate-limited with fail-closed semantics. The helper lives in `lib/auth-api-rate-limit.ts`.
 
 ## Service role
 
-The Supabase service role bypasses RLS. You should treat it as privileged and rare. Every use of the service role is audited by `npm run audit:tenant`. The strict variant (`audit:tenant:strict`) fails the build if any service-role query touches a tenant-scoped table without an explicit school filter. You should not add new service-role queries; if you think you need one, write a Postgres function with `security definer` instead.
+The Supabase service role bypasses RLS. You should treat it as privileged and rare. Every use of the service role is audited by `npm run audit:tenant`. The strict variant (`npm run audit:tenant:strict`) fails the build if any service-role query touches a tenant-scoped table without an explicit school filter. You should not add new service-role queries; if you think you need one, write a Postgres function with `security definer` instead.
 
 ## Auth
 
@@ -25,10 +25,10 @@ Auth is Supabase-managed. MFA supports TOTP factors (`enroll`, `verify`, `challe
 
 ## Tenant audit
 
-You can run two checks locally:
+Two checks are wired into `package.json` and CI:
 
-- `npm run audit:tenant` — read-only scan of every server file. Lists every place that imports the service-role client.
-- `npm run audit:tenant:strict` — same scan, but exits non-zero if it finds a service-role query that does not pass `school_id` to the database. Run this in CI before any merge.
+- `npm run audit:tenant` — read-only scan of every server file. Lists every place that imports the service-role client and flags any query without a `school_id` guard.
+- `npm run audit:tenant:strict` — same scan, but exits non-zero if it finds a service-role query that does not pass `school_id` to the database. Run this in CI before any merge. Currently reports 0 findings.
 
 ## What you should not do
 

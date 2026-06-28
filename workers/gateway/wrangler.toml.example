@@ -1,0 +1,71 @@
+# Copy to wrangler.toml and replace placeholder IDs before deploy.
+# See README.md for binding setup and deploy steps.
+
+name = "zamschool-gateway"
+main = "src/index.ts"
+compatibility_date = "2026-01-01"
+
+# --- R2 Buckets ---
+[[r2_buckets]]
+binding = "ASSETS_BUCKET"
+bucket_name = "zamschool-assets"
+
+[[r2_buckets]]
+binding = "UPLOADS_BUCKET"
+bucket_name = "zamschool-uploads"
+
+# --- KV Namespaces ---
+# wrangler kv namespace create SESSION_CACHE
+[[kv_namespaces]]
+binding = "SESSION_CACHE"
+id = "<SESSION_CACHE_KV_ID>"
+preview_id = "<SESSION_CACHE_PREVIEW_KV_ID>"
+
+# wrangler kv namespace create RATE_LIMITS
+[[kv_namespaces]]
+binding = "RATE_LIMITS"
+id = "<RATE_LIMITS_KV_ID>"
+preview_id = "<RATE_LIMITS_PREVIEW_KV_ID>"
+
+# --- D1 (optional offline read replica) ---
+# wrangler d1 create zamschool-offline
+[[d1_databases]]
+binding = "SCHOOL_DB"
+database_name = "zamschool-offline"
+database_id = "<D1_DATABASE_ID>"
+
+# --- Durable Objects (offline mutation queue) ---
+[durable_objects]
+bindings = [
+  { name = "SYNC_QUEUE", class_name = "SchoolSyncQueue" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["SchoolSyncQueue"]
+
+# --- Production vars (non-secret) ---
+[vars]
+UPSTREAM_API = "https://zamschoolos.site"
+CORS_ALLOWED_ORIGINS = "https://zamschoolos.site,http://localhost:3000"
+JWT_VERIFY_MODE = "signature"
+RATE_LIMIT_ENABLED = "true"
+SUPABASE_JWT_ISSUER = "https://<project-ref>.supabase.co/auth/v1"
+SUPABASE_JWT_AUDIENCE = "authenticated"
+
+# Secret (do NOT commit):
+#   wrangler secret put SUPABASE_JWT_SECRET
+
+# --- Local dev overrides (wrangler dev / .dev.vars) ---
+# JWT_VERIFY_MODE = "decode"
+# ALLOW_INSECURE_JWT_DECODE = "true"
+# RATE_LIMIT_ENABLED = "false"
+# UPSTREAM_API = "http://localhost:3000"
+# CORS_ALLOWED_ORIGINS = "http://localhost:3000"
+
+# --- Optional: staging environment ---
+# [env.staging]
+# name = "zamschool-gateway-staging"
+# [env.staging.vars]
+# UPSTREAM_API = "https://your-staging-app.vercel.app"
+# CORS_ALLOWED_ORIGINS = "https://your-staging-app.vercel.app,http://localhost:3000"

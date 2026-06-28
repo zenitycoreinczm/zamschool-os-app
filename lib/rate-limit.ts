@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isKvConfigured, checkKvRateLimit } from "./kv-client";
-import { isRedisConfigured, redisSlidingWindowHit } from "./redis";
-import { rateLimitKey } from "./redis-keys";
+import { isRedisConfigured, redisSlidingWindowHit } from "./redis/client";
+import { rateLimitKey } from "@/lib/redis/keys";
 
 interface RateLimitConfig {
   windowMs: number;
@@ -37,11 +37,13 @@ const burstCounters = new Map<string, number>();
 
 function checkMemorySlidingWindow(
   key: string,
-  config: RateLimitConfig
+  config: RateLimitConfig,
 ): { allowed: boolean; remaining: number; resetTime: number } {
   const now = Date.now();
   const windowStart = now - config.windowMs;
-  const kept = (slidingWindows.get(key) || []).filter((timestamp) => timestamp > windowStart);
+  const kept = (slidingWindows.get(key) || []).filter(
+    (timestamp) => timestamp > windowStart,
+  );
 
   if (kept.length >= config.maxRequests) {
     const oldest = kept[0] ?? now;
@@ -67,7 +69,7 @@ function checkMemorySlidingWindow(
  */
 export async function checkRateLimit(
   identifier: string,
-  config: RateLimitConfig
+  config: RateLimitConfig,
 ): Promise<{ allowed: boolean; remaining: number; resetTime: number }> {
   const now = Date.now();
   const scope = config.keyPrefix || "default";
@@ -97,7 +99,7 @@ export async function checkRateLimit(
 export async function rateLimitMiddleware(
   req: Request,
   identifier: string,
-  config: RateLimitConfig
+  config: RateLimitConfig,
 ): Promise<NextResponse | null> {
   const result = await checkRateLimit(identifier, config);
 
@@ -113,9 +115,11 @@ export async function rateLimitMiddleware(
           "X-RateLimit-Limit": String(config.maxRequests),
           "X-RateLimit-Remaining": "0",
           "X-RateLimit-Reset": String(Math.ceil(result.resetTime / 1000)),
-          "Retry-After": String(Math.ceil((result.resetTime - Date.now()) / 1000)),
+          "Retry-After": String(
+            Math.ceil((result.resetTime - Date.now()) / 1000),
+          ),
         },
-      }
+      },
     );
   }
 
@@ -136,15 +140,17 @@ export function getClientIdentifier(req: Request, userId?: string): string {
 export async function checkBurstLimit(
   userId: string,
   operation: string,
-  maxConcurrent: number = 3
+  maxConcurrent: number = 3,
 ): Promise<{ allowed: boolean; current: number }> {
   const key = rateLimitKey("burst", `${operation}:${userId}`);
 
   if (isRedisConfigured()) {
-    const count = await import("./redis").then((m) => m.redisIncr(key, 60));
+    const count = await import("./redis/client").then((m) =>
+      m.redisIncr(key, 60),
+    );
     if (count !== null) {
       if (count > maxConcurrent) {
-        await import("./redis").then((m) => m.redisDecr(key));
+        await import("./redis/client").then((m) => m.redisDecr(key));
         return { allowed: false, current: count - 1 };
       }
       return { allowed: true, current: count };
@@ -163,10 +169,13 @@ export async function checkBurstLimit(
   return { allowed: true, current };
 }
 
-export async function releaseBurstLimit(userId: string, operation: string): Promise<void> {
+export async function releaseBurstLimit(
+  userId: string,
+  operation: string,
+): Promise<void> {
   const key = rateLimitKey("burst", `${operation}:${userId}`);
   if (isRedisConfigured()) {
-    const { redisDecr } = await import("./redis");
+    const { redisDecr } = await import("./redis/client");
     await redisDecr(key);
     return;
   }
@@ -181,7 +190,7 @@ export { consumeDailyUsage, getDailyLimit } from "./daily-usage-limit";
 export async function trackDailyUsage(
   userId: string,
   feature: string,
-  increment: number = 1
+  increment: number = 1,
 ): Promise<{ current: number; limit: number; remaining: number }> {
   const { consumeDailyUsage } = await import("./daily-usage-limit");
   const result = await consumeDailyUsage(userId, feature, increment);

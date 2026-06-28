@@ -1,6 +1,11 @@
-import { dailyUsageKey } from "./redis-keys";
-import { isRedisConfigured, redisGet, redisIncr, redisDecr } from "./redis";
-import { clampRedisTtl } from "./redis-ttl";
+import { dailyUsageKey } from "@/lib/redis/keys";
+import {
+  isRedisConfigured,
+  redisGet,
+  redisIncr,
+  redisDecr,
+} from "@/lib/redis/client";
+import { clampRedisTtl } from "@/lib/redis/ttl";
 
 const memoryDailyBuckets = new Map<string, number>();
 
@@ -49,7 +54,7 @@ function consumeMemoryDailyUsage(
   userId: string,
   feature: string,
   increment: number,
-  limit: number
+  limit: number,
 ): DailyUsageResult {
   const day = todayUtcKey();
   const key = memoryBucketKey(feature, userId, day);
@@ -75,7 +80,10 @@ function consumeMemoryDailyUsage(
   };
 }
 
-export async function getDailyUsage(userId: string, feature: string): Promise<DailyUsageResult> {
+export async function getDailyUsage(
+  userId: string,
+  feature: string,
+): Promise<DailyUsageResult> {
   const limit = getDailyLimit(feature);
   const day = todayUtcKey();
   const retryAfterSec = secondsUntilUtcMidnight();
@@ -95,7 +103,8 @@ export async function getDailyUsage(userId: string, feature: string): Promise<Da
     };
   }
 
-  const current = memoryDailyBuckets.get(memoryBucketKey(feature, userId, day)) || 0;
+  const current =
+    memoryDailyBuckets.get(memoryBucketKey(feature, userId, day)) || 0;
   const remaining = Math.max(0, limit - current);
   return {
     allowed: remaining > 0,
@@ -109,7 +118,7 @@ export async function getDailyUsage(userId: string, feature: string): Promise<Da
 export async function consumeDailyUsage(
   userId: string,
   feature: string,
-  increment = 1
+  increment = 1,
 ): Promise<DailyUsageResult> {
   const limit = getDailyLimit(feature);
   const day = todayUtcKey();

@@ -1,28 +1,61 @@
 import { NextResponse } from "next/server";
 
-import { authenticateAccountPortalRequest } from "@/lib/account-portal-auth";
 import { getUnreadCountsForUser } from "@/lib/inbox-read-cache";
-import { applyPlatformRateLimit, platformRateLimitResponse } from "@/lib/platform-api-guard";
+import {
+  applyPlatformRateLimit,
+  platformRateLimitResponse,
+} from "@/lib/platform-api-guard";
+import { requireActorContext } from "@/lib/server-auth";
 import { applyEdgeCacheHeaders } from "@/lib/edge-cache";
 import { safeErrorMessage } from "@/lib/server-guards";
 
+const UNREAD_SUMMARY_ROLES = [
+  "ADMIN",
+  "PRINCIPAL",
+  "TEACHER",
+  "STUDENT",
+  "PARENT",
+  "PAYMENTS",
+  "DEPUTY_HEAD",
+  "BURSAR",
+  "ACADEMIC_ADMIN",
+  "HR_ADMIN",
+  "ICT_ADMIN",
+  "DISCIPLINE_ADMIN",
+  "REGISTRAR",
+  "GUIDANCE_OFFICE",
+  "SUPER_ADMIN",
+] as const;
+
 export async function GET(req: Request) {
   try {
-    const actor = await authenticateAccountPortalRequest(req);
-    if ("response" in actor) return actor.response;
-
-    const rate = await applyPlatformRateLimit({
-      scope: "account-unread-summary",
+    const access = await requireActorContext(
+      {
+        allowedRoles: [...UNREAD_SUMMARY_ROLES],
+        requireSchool: false,
+        allowMetadataRoleFallback: true,
+      },
       req,
-      userId: actor.userId,
-      preset: "unreadSummary",
-    });
-    if (!rate.allowed) return platformRateLimitResponse(rate);
+    );
+    if (!access.ok) return access.response;
 
-    const counts = await getUnreadCountsForUser({
-      userId: actor.userId,
-      schoolId: actor.schoolId,
-    });
+    if (access.context.schoolId) {
+      const rate = await applyPlatformRateLimit({
+        scope: "account-unread-summary",
+        schoolId: access.context.schoolId,
+        req,
+        userId: access.context.userId,
+        preset: "unreadSummary",
+      });
+      if (!rate.allowed) return platformRateLimitResponse(rate);
+    }
+
+    const counts = access.context.schoolId
+      ? await getUnreadCountsForUser({
+          userId: access.context.userId,
+          schoolId: access.context.schoolId,
+        })
+      : { messages: 0, notifications: 0 };
 
     return applyEdgeCacheHeaders(
       NextResponse.json({
@@ -31,17 +64,12 @@ export async function GET(req: Request) {
           messages: counts.messages,
         },
       }),
-      "noStore"
+      "noStore",
     );
   } catch (error: unknown) {
     return NextResponse.json(
       { error: safeErrorMessage(error, "Failed to load unread summary") },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
-
-// Static analysis requirements:
-// countUnreadNotificationsForUser
-// from("messages")
-// .eq("school_id", actor.schoolId)

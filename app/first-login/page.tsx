@@ -8,6 +8,7 @@ import { resolveOnboardingPath } from "@/lib/auth-routing";
 import { supabase } from "@/lib/supabase";
 import { AuthPageShell } from "@/components/auth/AuthPageShell";
 import { cn } from "@/lib/utils";
+import { adminApiFetch } from "@/lib/admin-browser-api";
 
 type AccountProfilePayload = {
   success?: boolean;
@@ -33,7 +34,9 @@ export default function FirstLoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [profileRole, setProfileRole] = useState<string | null>(null);
-  const [temporaryPasswordIssuedAt, setTemporaryPasswordIssuedAt] = useState<string | null>(null);
+  const [temporaryPasswordIssuedAt, setTemporaryPasswordIssuedAt] = useState<
+    string | null
+  >(null);
 
   const helperText = useMemo(() => {
     if (!temporaryPasswordIssuedAt) {
@@ -64,9 +67,11 @@ export default function FirstLoginPage() {
           return;
         }
 
-      const response = await fetch("/api/account/profile", { cache: "no-store" });
-      const payload = (await response.json()) as AccountProfilePayload;
-      if (!active) return;
+        const response = await fetch("/api/account/profile", {
+          cache: "no-store",
+        });
+        const payload = (await response.json()) as AccountProfilePayload;
+        if (!active) return;
 
         if (!response.ok) {
           throw new Error(payload.error || "Failed to load account state");
@@ -77,10 +82,11 @@ export default function FirstLoginPage() {
             ? payload.data.firstLogin.mustChangePassword === true
             : false;
 
-        const resolvedRole = String(payload.data?.profile?.role || "").trim() || null;
+        const resolvedRole =
+          String(payload.data?.profile?.role || "").trim() || null;
         setProfileRole(resolvedRole);
         setTemporaryPasswordIssuedAt(
-          payload.data?.firstLogin?.temporaryPasswordIssuedAt || null
+          payload.data?.firstLogin?.temporaryPasswordIssuedAt || null,
         );
 
         if (!mustChangePassword) {
@@ -90,7 +96,7 @@ export default function FirstLoginPage() {
               emailVerified: Boolean(session.user.email_confirmed_at),
               hasSchool: true,
               mustChangePassword: false,
-            })
+            }),
           );
           router.refresh();
         }
@@ -133,19 +139,8 @@ export default function FirstLoginPage() {
         throw updateResult.error;
       }
 
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const accessToken = session?.access_token;
-      if (!accessToken) {
-        throw new Error("Your session expired before the password update finished.");
-      }
-
-      const response = await fetch("/api/auth/complete-first-login", {
+      const response = await adminApiFetch("/api/auth/complete-first-login", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
       });
       const payload = await response.json();
       if (!response.ok) {
@@ -157,7 +152,7 @@ export default function FirstLoginPage() {
         throw refreshResult.error;
       }
 
-      const refreshedSession = refreshResult.data.session || session;
+      const refreshedSession = refreshResult.data.session;
 
       router.replace(
         resolveOnboardingPath({
@@ -165,7 +160,7 @@ export default function FirstLoginPage() {
           emailVerified: Boolean(refreshedSession?.user?.email_confirmed_at),
           hasSchool: true,
           mustChangePassword: false,
-        })
+        }),
       );
       router.refresh();
     } catch (submitError: any) {
@@ -194,9 +189,15 @@ export default function FirstLoginPage() {
             <LockKeyhole className="h-6 w-6" />
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-600">First login</p>
-            <h1 className="mt-2 text-2xl font-bold text-slate-950">Activate your managed account</h1>
-            <p className="mt-3 text-sm leading-6 text-slate-500">{helperText}</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-600">
+              First login
+            </p>
+            <h1 className="mt-2 text-2xl font-bold text-slate-950">
+              Activate your managed account
+            </h1>
+            <p className="mt-3 text-sm leading-6 text-slate-500">
+              {helperText}
+            </p>
           </div>
         </div>
 
@@ -252,14 +253,16 @@ function PasswordField({
 }) {
   return (
     <label className="block">
-      <span className="mb-2 block text-sm font-semibold text-slate-700">{label}</span>
+      <span className="mb-2 block text-sm font-semibold text-slate-700">
+        {label}
+      </span>
       <div className="relative">
         <input
           type={visible ? "text" : "password"}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           className={cn(
-            "w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 pr-12 text-sm text-slate-950 outline-none transition focus:border-transparent focus:bg-white focus:ring-2 focus:ring-sky-300"
+            "w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 pr-12 text-sm text-slate-950 outline-none transition focus:border-transparent focus:bg-white focus:ring-2 focus:ring-sky-300",
           )}
         />
         <button
@@ -267,7 +270,11 @@ function PasswordField({
           onClick={onToggle}
           className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-700"
         >
-          {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          {visible ? (
+            <EyeOff className="h-4 w-4" />
+          ) : (
+            <Eye className="h-4 w-4" />
+          )}
         </button>
       </div>
     </label>

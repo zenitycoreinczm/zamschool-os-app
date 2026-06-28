@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireFeatureAccess } from "@/lib/feature-permissions";
 import { requirePaymentsContext } from "@/lib/server-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 
@@ -6,6 +7,8 @@ export async function GET(request: NextRequest) {
   try {
     const access = await requirePaymentsContext(request);
     if (!access.ok) return access.response;
+    const perm = await requireFeatureAccess(access.context, "payments", "read");
+    if (!perm.ok) return perm.response;
     const { schoolId } = access.context;
 
     const { searchParams } = new URL(request.url);
@@ -27,7 +30,7 @@ export async function GET(request: NextRequest) {
       console.error("Error fetching billing summary:", recordsError);
       return NextResponse.json(
         { error: "Failed to fetch billing summary" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -57,19 +60,20 @@ export async function GET(request: NextRequest) {
       outstandingQuery = outstandingQuery.eq("billing_month", month);
     }
 
-    const { data: outstandingRows, error: outstandingError } = await outstandingQuery;
+    const { data: outstandingRows, error: outstandingError } =
+      await outstandingQuery;
 
     if (outstandingError) {
       console.error("Error fetching outstanding amounts:", outstandingError);
       return NextResponse.json(
         { error: "Failed to fetch billing summary" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
     const totalOutstanding = (outstandingRows || []).reduce(
       (sum, row) => sum + (Number(row.amount_due) - Number(row.amount_paid)),
-      0
+      0,
     );
 
     // Overdue count (due_date < today and status not PAID/WAIVED)
@@ -91,7 +95,7 @@ export async function GET(request: NextRequest) {
       console.error("Error fetching overdue count:", overdueError);
       return NextResponse.json(
         { error: "Failed to fetch billing summary" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -107,7 +111,7 @@ export async function GET(request: NextRequest) {
     console.error("Error in billing summary GET:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

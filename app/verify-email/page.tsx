@@ -2,7 +2,6 @@
 
 import { Suspense, useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { buildAuthApiHeaders } from "@/lib/auth-api-client";
 import { supabase } from "@/lib/supabase";
 import {
   Loader2,
@@ -79,13 +78,11 @@ function VerifyEmailContent() {
     setError(null);
 
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
       const res = await fetch("/api/auth/send-otp", {
         method: "POST",
-        headers: buildAuthApiHeaders(session),
+        headers: {
+          "Content-Type": "application/json",
+        },
         credentials: "same-origin",
         body: JSON.stringify({ email: targetEmail, userId: targetUserId }),
       });
@@ -151,13 +148,11 @@ function VerifyEmailContent() {
     setError(null);
 
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
       const res = await fetch("/api/auth/verify-otp", {
         method: "POST",
-        headers: buildAuthApiHeaders(session),
+        headers: {
+          "Content-Type": "application/json",
+        },
         credentials: "same-origin",
         body: JSON.stringify({ email, userId, otpCode: fullOtp }),
       });

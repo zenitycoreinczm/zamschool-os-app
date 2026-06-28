@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { requireAdminContext } from "@/lib/server-auth";
-import { parseJsonWithSchema, safeErrorMessage, getClientIp } from "@/lib/server-guards";
+import { requireFeatureAccess } from "@/lib/feature-permissions";
+import {
+  parseJsonWithSchema,
+  safeErrorMessage,
+  getClientIp,
+} from "@/lib/server-guards";
 import { applyEdgeCacheHeaders } from "@/lib/edge-cache";
 import { supabaseAdmin } from "@/lib/supabase";
 import { auditDomainWrite } from "@/lib/audit-domain";
@@ -43,8 +48,10 @@ export async function GET(req: Request) {
     return applyEdgeCacheHeaders(response, "eventsRead");
   } catch (error: unknown) {
     return NextResponse.json(
-      { error: safeErrorMessage(error, "Failed to load discipline categories") },
-      { status: 500 }
+      {
+        error: safeErrorMessage(error, "Failed to load discipline categories"),
+      },
+      { status: 500 },
     );
   }
 }
@@ -53,6 +60,12 @@ export async function POST(req: Request) {
   try {
     const access = await requireAdminContext(req);
     if (!access.ok) return access.response;
+    const perm = await requireFeatureAccess(
+      access.context,
+      "discipline",
+      "create",
+    );
+    if (!perm.ok) return perm.response;
     const { userId, schoolId } = access.context;
     if (!schoolId) {
       return NextResponse.json({ error: "No school linked" }, { status: 403 });
@@ -75,7 +88,7 @@ export async function POST(req: Request) {
       if (error.code === "23505") {
         return NextResponse.json(
           { error: "A category with this name already exists" },
-          { status: 409 }
+          { status: 409 },
         );
       }
       throw error;
@@ -96,12 +109,14 @@ export async function POST(req: Request) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: "Validation failed", details: error.issues },
-        { status: 400 }
+        { status: 400 },
       );
     }
     return NextResponse.json(
-      { error: safeErrorMessage(error, "Failed to create discipline category") },
-      { status: 500 }
+      {
+        error: safeErrorMessage(error, "Failed to create discipline category"),
+      },
+      { status: 500 },
     );
   }
 }
@@ -110,6 +125,12 @@ export async function PUT(req: Request) {
   try {
     const access = await requireAdminContext(req);
     if (!access.ok) return access.response;
+    const perm = await requireFeatureAccess(
+      access.context,
+      "discipline",
+      "update",
+    );
+    if (!perm.ok) return perm.response;
     const { userId, schoolId } = access.context;
     if (!schoolId) {
       return NextResponse.json({ error: "No school linked" }, { status: 403 });
@@ -118,11 +139,16 @@ export async function PUT(req: Request) {
     const body = await parseJsonWithSchema(req, updateCategorySchema);
     const { id, ...updates } = body;
 
-    const updatePayload: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    const updatePayload: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
     if (updates.name !== undefined) updatePayload.name = updates.name;
-    if (updates.description !== undefined) updatePayload.description = updates.description;
-    if (updates.severity !== undefined) updatePayload.severity = updates.severity;
-    if (updates.isActive !== undefined) updatePayload.is_active = updates.isActive;
+    if (updates.description !== undefined)
+      updatePayload.description = updates.description;
+    if (updates.severity !== undefined)
+      updatePayload.severity = updates.severity;
+    if (updates.isActive !== undefined)
+      updatePayload.is_active = updates.isActive;
 
     const { data, error } = await supabaseAdmin
       .from("discipline_categories")
@@ -134,7 +160,10 @@ export async function PUT(req: Request) {
 
     if (error) throw error;
     if (!data) {
-      return NextResponse.json({ error: "Category not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Category not found" },
+        { status: 404 },
+      );
     }
 
     await auditDomainWrite({
@@ -152,12 +181,14 @@ export async function PUT(req: Request) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: "Validation failed", details: error.issues },
-        { status: 400 }
+        { status: 400 },
       );
     }
     return NextResponse.json(
-      { error: safeErrorMessage(error, "Failed to update discipline category") },
-      { status: 500 }
+      {
+        error: safeErrorMessage(error, "Failed to update discipline category"),
+      },
+      { status: 500 },
     );
   }
 }

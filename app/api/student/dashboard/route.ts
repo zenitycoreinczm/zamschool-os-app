@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { applyEdgeCacheHeaders } from "@/lib/edge-cache";
+import { withCache, CACHE_CONFIGS } from "@/lib/enhanced-cache";
 import { applyPlatformRateLimit, platformRateLimitResponse } from "@/lib/platform-api-guard";
 import { safeErrorMessage } from "@/lib/server-guards";
 import { requireStudentContext } from "@/lib/server-auth";
@@ -31,6 +32,7 @@ export async function GET(req: Request) {
 
     const rate = await applyPlatformRateLimit({
       scope: "student-dashboard",
+      schoolId,
       req,
       userId,
       preset: "heavyRead",
@@ -39,251 +41,260 @@ export async function GET(req: Request) {
 
     const { searchParams } = new URL(req.url);
     const date = searchParams.get("date") || new Date().toISOString().slice(0, 10);
-    const lessonDayOfWeek = resolveLessonDayOfWeek(date);
 
-    const { data: profile, error: profileError } = await supabaseAdmin
-      .from("profiles")
-      .select("id, email, first_name, last_name, school_id, admission_number, class_id, grade_id")
-      .eq("id", userId)
-      .eq("school_id", schoolId)
-      .maybeSingle();
+    const dashboardData = await withCache(
+      `student:${userId}:${schoolId}:${date}`,
+      async () => {
+        const lessonDayOfWeek = resolveLessonDayOfWeek(date);
 
-    if (profileError) throw profileError;
+        const { data: profile, error: profileError } = await supabaseAdmin
+          .from("profiles")
+          .select("id, email, first_name, last_name, school_id, admission_number, class_id, grade_id")
+          .eq("id", userId)
+          .eq("school_id", schoolId)
+          .maybeSingle();
 
-    const legacyStudent = await loadLegacyStudentRecord(userId, schoolId);
+        if (profileError) throw profileError;
 
-    const classId = profile?.class_id || legacyStudent?.classId || null;
-    const admissionNumber =
-      profile?.admission_number || legacyStudent?.studentNumber || null;
-    const { classRow, gradeLabel } = await loadClassContext(classId, profile?.grade_id ?? null);
+        const legacyStudent = await loadLegacyStudentRecord(userId, schoolId);
 
-    const baseProfile = {
-      id: userId,
-      fullName: buildDisplayName(profile),
-      email: profile?.email || null,
-      admissionNumber,
-      classId,
-      className: classRow?.name || null,
-      gradeLabel,
-    };
+        const classId = profile?.class_id || legacyStudent?.classId || null;
+        const admissionNumber =
+          profile?.admission_number || legacyStudent?.studentNumber || null;
+        const { classRow, gradeLabel } = await loadClassContext(classId, profile?.grade_id ?? null);
 
-    if (!classId) {
-      return jsonWithPrivateCache({
-        success: true,
-        data: {
+        const baseProfile = {
+          id: userId,
+          fullName: buildDisplayName(profile),
+          email: profile?.email || null,
+          admissionNumber,
+          classId,
+          className: classRow?.name || null,
+          gradeLabel,
+        };
+
+        if (!classId) {
+          return {
+            profile: baseProfile,
+            todayLessons: [],
+            attendance: {
+              summary: EMPTY_ATTENDANCE_SUMMARY,
+              rows: [],
+            },
+            assignments: {
+              total: 0,
+              urgent: 0,
+              rows: [],
+            },
+          };
+        }
+
+        const attendanceState = await loadAttendanceState({
+          schoolId,
+          profileId: userId,
+          legacyStudentId: legacyStudent?.studentId || null,
+        });
+
+        const attendanceLessonIds = attendanceState.hasLessonId
+          ? Array.from(
+              new Set(
+                attendanceState.rows
+                  .map((row: any) => row.lesson_id)
+                  .filter(Boolean)
+              )
+            )
+          : [];
+
+        const [lessonsResult, assignmentsResult, attendanceLessonsResult] = await Promise.all([
+          supabaseAdmin
+            .from("lessons")
+            .select("id, class_id, subject_id, teacher_id, start_time, end_time, day_of_week")
+            .eq("school_id", schoolId)
+            .eq("class_id", classId)
+            .eq("day_of_week", lessonDayOfWeek)
+            .order("start_time", { ascending: true }),
+          supabaseAdmin
+            .from("assignments")
+            .select(
+              `
+                id,
+                title,
+                due_date,
+                total_marks,
+                description,
+                subject_id,
+                teacher_id
+              `
+            )
+            .eq("school_id", schoolId)
+            .eq("class_id", classId)
+            .gte("due_date", date)
+            .order("due_date", { ascending: true })
+            .limit(8),
+          attendanceLessonIds.length > 0
+            ? supabaseAdmin
+                .from("lessons")
+                .select("id, class_id, subject_id, teacher_id, start_time, end_time")
+                .eq("school_id", schoolId)
+                .in("id", attendanceLessonIds)
+            : Promise.resolve({ data: [], error: null }),
+        ]);
+
+        if (lessonsResult.error) throw lessonsResult.error;
+        if (assignmentsResult.error) throw assignmentsResult.error;
+        if (attendanceLessonsResult.error) throw attendanceLessonsResult.error;
+
+        const attendanceLessons = attendanceLessonsResult.data || [];
+
+        const teacherIds = Array.from(
+          new Set(
+            [
+              ...(lessonsResult.data || []).map((lesson: any) => lesson.teacher_id),
+              ...attendanceLessons.map((lesson: any) => lesson.teacher_id),
+              ...(assignmentsResult.data || []).map((assignment: any) => assignment.teacher_id),
+            ].filter(Boolean)
+          )
+        );
+
+        const subjectIds = Array.from(
+          new Set(
+            [
+              ...(lessonsResult.data || []).map((lesson: any) => lesson.subject_id),
+              ...attendanceLessons.map((lesson: any) => lesson.subject_id),
+              ...(assignmentsResult.data || []).map((assignment: any) => assignment.subject_id),
+            ].filter(Boolean)
+          )
+        );
+
+        const [teachersResult, subjectsResult] = await Promise.all([
+          teacherIds.length > 0
+            ? supabaseAdmin
+                .from("profiles")
+                .select("id, first_name, last_name, email")
+                .eq("school_id", schoolId)
+                .in("id", teacherIds)
+            : Promise.resolve({ data: [], error: null }),
+          subjectIds.length > 0
+            ? supabaseAdmin
+                .from("subjects")
+                .select("id, name, code")
+                .eq("school_id", schoolId)
+                .in("id", subjectIds)
+            : Promise.resolve({ data: [], error: null }),
+        ]);
+
+        if (teachersResult.error) throw teachersResult.error;
+        if (subjectsResult.error) throw subjectsResult.error;
+
+        const teacherMap = new Map<string, string>();
+        for (const teacher of teachersResult.data || []) {
+          teacherMap.set(teacher.id, buildDisplayName(teacher));
+        }
+
+        const subjectMap = new Map<string, { name: string; code: string | null }>();
+        for (const subject of subjectsResult.data || []) {
+          subjectMap.set(subject.id, {
+            name: subject.name || "Subject",
+            code: subject.code || null,
+          });
+        }
+
+        const assignmentIds = assignmentRowsToIds(assignmentsResult.data || []);
+        const assignmentSubmissionsByAssignmentId = await getAssignmentSubmissionsByAssignmentId({
+          schoolId,
+          studentProfileId: userId,
+          assignmentIds,
+        });
+
+        const attendanceLessonMap = new Map<string, any>();
+        for (const lesson of attendanceLessons) {
+          attendanceLessonMap.set(lesson.id, lesson);
+        }
+
+        const classLabel = buildClassLabel({
+          name: classRow?.name || null,
+          gradeLabel,
+        });
+
+        const attendanceRows = attendanceState.rows.map((row) => {
+          const lesson = row.lesson_id ? attendanceLessonMap.get(row.lesson_id) : null;
+          const subject = lesson?.subject_id ? subjectMap.get(lesson.subject_id) : null;
+
+          return {
+            id: row.id,
+            date: row.date,
+            status: normalizeAttendanceStatus(row.status),
+            remarks: row.remarks || "",
+            subjectName: subject?.name || "Attendance record",
+            className: classLabel,
+            teacherName: teacherMap.get(lesson?.teacher_id) || "Teacher pending",
+            startTime: lesson?.start_time || null,
+            endTime: lesson?.end_time || null,
+          };
+        });
+
+        const attendanceSummary = buildAttendanceSummary(attendanceRows);
+        const todayLessons = (lessonsResult.data || []).map((lesson: any) => {
+          const subject = lesson.subject_id ? subjectMap.get(lesson.subject_id) : null;
+
+          return {
+            id: lesson.id,
+            subjectName: subject?.name || "Subject",
+            subjectCode: subject?.code || null,
+            teacherName: teacherMap.get(lesson.teacher_id) || "Teacher pending",
+            className: classLabel,
+            startTime: lesson.start_time,
+            endTime: lesson.end_time,
+            isCurrent: isCurrentLesson(date, lesson.start_time, lesson.end_time),
+          };
+        });
+
+        const assignmentRows = (assignmentsResult.data || []).map((assignment: any) => {
+          const subject = assignment.subject_id ? subjectMap.get(assignment.subject_id) : null;
+          const submission = assignmentSubmissionsByAssignmentId.get(assignment.id);
+
+          return {
+            id: assignment.id,
+            title: assignment.title,
+            dueDate: assignment.due_date,
+            totalMarks: assignment.total_marks ?? null,
+            description: assignment.description || "",
+            subjectName: subject?.name || "General",
+            subjectCode: subject?.code || null,
+            teacherName: teacherMap.get(assignment.teacher_id) || "Teacher pending",
+            urgent: isUrgentAssignment(assignment.due_date),
+            submissionId: submission?.id || null,
+            submissionText: submission?.submission_text || "",
+            submissionLink: submission?.submission_link || null,
+            submittedAt: submission?.submitted_at || null,
+            updatedAt: submission?.updated_at || null,
+            submissionStatus: submission ? "submitted" : "pending",
+          };
+        });
+
+        return {
           profile: baseProfile,
-          todayLessons: [],
+          todayLessons,
           attendance: {
-            summary: EMPTY_ATTENDANCE_SUMMARY,
-            rows: [],
+            summary: attendanceSummary,
+            rows: attendanceRows,
           },
           assignments: {
-            total: 0,
-            urgent: 0,
-            rows: [],
+            total: assignmentRows.length,
+            urgent: assignmentRows.filter((row) => row.urgent).length,
+            rows: assignmentRows,
           },
-        },
-      });
-    }
-
-    const attendanceState = await loadAttendanceState({
-      schoolId,
-      profileId: userId,
-      legacyStudentId: legacyStudent?.studentId || null,
-    });
-
-    const attendanceLessonIds = attendanceState.hasLessonId
-      ? Array.from(
-          new Set(
-            attendanceState.rows
-              .map((row: any) => row.lesson_id)
-              .filter(Boolean)
-          )
-        )
-      : [];
-
-    const [lessonsResult, assignmentsResult, attendanceLessonsResult] = await Promise.all([
-      supabaseAdmin
-        .from("lessons")
-        .select("id, class_id, subject_id, teacher_id, start_time, end_time, day_of_week")
-        .eq("school_id", schoolId)
-        .eq("class_id", classId)
-        .eq("day_of_week", lessonDayOfWeek)
-        .order("start_time", { ascending: true }),
-      supabaseAdmin
-        .from("assignments")
-        .select(
-          `
-            id,
-            title,
-            due_date,
-            total_marks,
-            description,
-            subject_id,
-            teacher_id
-          `
-        )
-        .eq("school_id", schoolId)
-        .eq("class_id", classId)
-        .gte("due_date", date)
-        .order("due_date", { ascending: true })
-        .limit(8),
-      attendanceLessonIds.length > 0
-        ? supabaseAdmin
-            .from("lessons")
-            .select("id, class_id, subject_id, teacher_id, start_time, end_time")
-            .eq("school_id", schoolId)
-            .in("id", attendanceLessonIds)
-        : Promise.resolve({ data: [], error: null }),
-    ]);
-
-    if (lessonsResult.error) throw lessonsResult.error;
-    if (assignmentsResult.error) throw assignmentsResult.error;
-    if (attendanceLessonsResult.error) throw attendanceLessonsResult.error;
-
-    const attendanceLessons = attendanceLessonsResult.data || [];
-
-    const teacherIds = Array.from(
-      new Set(
-        [
-          ...(lessonsResult.data || []).map((lesson: any) => lesson.teacher_id),
-          ...attendanceLessons.map((lesson: any) => lesson.teacher_id),
-          ...(assignmentsResult.data || []).map((assignment: any) => assignment.teacher_id),
-        ].filter(Boolean)
-      )
+        };
+      },
+      {
+        ...CACHE_CONFIGS.student.dashboard,
+        tags: ["dashboard"],
+      }
     );
-
-    const subjectIds = Array.from(
-      new Set(
-        [
-          ...(lessonsResult.data || []).map((lesson: any) => lesson.subject_id),
-          ...attendanceLessons.map((lesson: any) => lesson.subject_id),
-          ...(assignmentsResult.data || []).map((assignment: any) => assignment.subject_id),
-        ].filter(Boolean)
-      )
-    );
-
-    const [teachersResult, subjectsResult] = await Promise.all([
-      teacherIds.length > 0
-        ? supabaseAdmin
-            .from("profiles")
-            .select("id, first_name, last_name, email")
-            .eq("school_id", schoolId)
-            .in("id", teacherIds)
-        : Promise.resolve({ data: [], error: null }),
-      subjectIds.length > 0
-        ? supabaseAdmin
-            .from("subjects")
-            .select("id, name, code")
-            .eq("school_id", schoolId)
-            .in("id", subjectIds)
-        : Promise.resolve({ data: [], error: null }),
-    ]);
-
-    if (teachersResult.error) throw teachersResult.error;
-    if (subjectsResult.error) throw subjectsResult.error;
-
-    const teacherMap = new Map<string, string>();
-    for (const teacher of teachersResult.data || []) {
-      teacherMap.set(teacher.id, buildDisplayName(teacher));
-    }
-
-    const subjectMap = new Map<string, { name: string; code: string | null }>();
-    for (const subject of subjectsResult.data || []) {
-      subjectMap.set(subject.id, {
-        name: subject.name || "Subject",
-        code: subject.code || null,
-      });
-    }
-
-    const assignmentIds = assignmentRowsToIds(assignmentsResult.data || []);
-    const assignmentSubmissionsByAssignmentId = await getAssignmentSubmissionsByAssignmentId({
-      schoolId,
-      studentProfileId: userId,
-      assignmentIds,
-    });
-
-    const attendanceLessonMap = new Map<string, any>();
-    for (const lesson of attendanceLessons) {
-      attendanceLessonMap.set(lesson.id, lesson);
-    }
-
-    const classLabel = buildClassLabel({
-      name: classRow?.name || null,
-      gradeLabel,
-    });
-
-    const attendanceRows = attendanceState.rows.map((row) => {
-      const lesson = row.lesson_id ? attendanceLessonMap.get(row.lesson_id) : null;
-      const subject = lesson?.subject_id ? subjectMap.get(lesson.subject_id) : null;
-
-      return {
-        id: row.id,
-        date: row.date,
-        status: normalizeAttendanceStatus(row.status),
-        remarks: row.remarks || "",
-        subjectName: subject?.name || "Attendance record",
-        className: classLabel,
-        teacherName: teacherMap.get(lesson?.teacher_id) || "Teacher pending",
-        startTime: lesson?.start_time || null,
-        endTime: lesson?.end_time || null,
-      };
-    });
-
-    const attendanceSummary = buildAttendanceSummary(attendanceRows);
-    const todayLessons = (lessonsResult.data || []).map((lesson: any) => {
-      const subject = lesson.subject_id ? subjectMap.get(lesson.subject_id) : null;
-
-      return {
-        id: lesson.id,
-        subjectName: subject?.name || "Subject",
-        subjectCode: subject?.code || null,
-        teacherName: teacherMap.get(lesson.teacher_id) || "Teacher pending",
-        className: classLabel,
-        startTime: lesson.start_time,
-        endTime: lesson.end_time,
-        isCurrent: isCurrentLesson(date, lesson.start_time, lesson.end_time),
-      };
-    });
-
-    const assignmentRows = (assignmentsResult.data || []).map((assignment: any) => {
-      const subject = assignment.subject_id ? subjectMap.get(assignment.subject_id) : null;
-      const submission = assignmentSubmissionsByAssignmentId.get(assignment.id);
-
-      return {
-        id: assignment.id,
-        title: assignment.title,
-        dueDate: assignment.due_date,
-        totalMarks: assignment.total_marks ?? null,
-        description: assignment.description || "",
-        subjectName: subject?.name || "General",
-        subjectCode: subject?.code || null,
-        teacherName: teacherMap.get(assignment.teacher_id) || "Teacher pending",
-        urgent: isUrgentAssignment(assignment.due_date),
-        submissionId: submission?.id || null,
-        submissionText: submission?.submission_text || "",
-        submissionLink: submission?.submission_link || null,
-        submittedAt: submission?.submitted_at || null,
-        updatedAt: submission?.updated_at || null,
-        submissionStatus: submission ? "submitted" : "pending",
-      };
-    });
 
     return jsonWithPrivateCache({
       success: true,
-      data: {
-        profile: baseProfile,
-        todayLessons,
-        attendance: {
-          summary: attendanceSummary,
-          rows: attendanceRows,
-        },
-        assignments: {
-          total: assignmentRows.length,
-          urgent: assignmentRows.filter((row) => row.urgent).length,
-          rows: assignmentRows,
-        },
-      },
+      data: dashboardData,
     });
   } catch (error: unknown) {
     return NextResponse.json(

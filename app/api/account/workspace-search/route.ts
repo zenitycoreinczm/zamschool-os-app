@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { applyPlatformRateLimit, platformRateLimitResponse } from "@/lib/platform-api-guard";
+import {
+  applyPlatformRateLimit,
+  platformRateLimitResponse,
+} from "@/lib/platform-api-guard";
 import { requireActorContext } from "@/lib/server-auth";
 import { safeErrorMessage } from "@/lib/server-guards";
 import { runWorkspaceSearch } from "@/lib/workspace-search-server";
@@ -19,6 +22,7 @@ const WORKSPACE_ROLES = [
   "HR_ADMIN",
   "ICT_ADMIN",
   "DISCIPLINE_ADMIN",
+  "REGISTRAR",
   "GUIDANCE_OFFICE",
   "SUPER_ADMIN",
 ] as const;
@@ -31,12 +35,21 @@ export async function GET(req: Request) {
         requireSchool: true,
         allowMetadataRoleFallback: true,
       },
-      req
+      req,
     );
     if (!access.ok) return access.response;
 
+    const schoolId = access.context.schoolId;
+    if (!schoolId) {
+      return NextResponse.json(
+        { error: "No school linked to this account" },
+        { status: 403 },
+      );
+    }
+
     const rate = await applyPlatformRateLimit({
       scope: "account-workspace-search",
+      schoolId,
       req,
       userId: access.context.userId,
       preset: "workspaceContext",
@@ -56,7 +69,7 @@ export async function GET(req: Request) {
   } catch (error: unknown) {
     return NextResponse.json(
       { error: safeErrorMessage(error, "Failed to run workspace search") },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

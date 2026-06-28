@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 
-import { applyPlatformRateLimit, platformRateLimitResponse } from "@/lib/platform-api-guard";
+import {
+  applyPlatformRateLimit,
+  platformRateLimitResponse,
+} from "@/lib/platform-api-guard";
 import { safeErrorMessage } from "@/lib/server-guards";
 import { requireActorContext } from "@/lib/server-auth";
 import { buildWorkspaceContextPayload } from "@/lib/workspace-context-server";
@@ -18,6 +21,7 @@ const WORKSPACE_ROLES = [
   "HR_ADMIN",
   "ICT_ADMIN",
   "DISCIPLINE_ADMIN",
+  "REGISTRAR",
   "GUIDANCE_OFFICE",
   "SUPER_ADMIN",
 ] as const;
@@ -30,17 +34,20 @@ export async function GET(req: Request) {
         requireSchool: false,
         allowMetadataRoleFallback: true,
       },
-      req
+      req,
     );
     if (!access.ok) return access.response;
 
-    const rate = await applyPlatformRateLimit({
-      scope: "account-workspace-context",
-      req,
-      userId: access.context.userId,
-      preset: "workspaceContext",
-    });
-    if (!rate.allowed) return platformRateLimitResponse(rate);
+    if (access.context.schoolId) {
+      const rate = await applyPlatformRateLimit({
+        scope: "account-workspace-context",
+        schoolId: access.context.schoolId,
+        req,
+        userId: access.context.userId,
+        preset: "workspaceContext",
+      });
+      if (!rate.allowed) return platformRateLimitResponse(rate);
+    }
 
     const data = await buildWorkspaceContextPayload(access.context);
 
@@ -54,8 +61,7 @@ export async function GET(req: Request) {
   } catch (error: unknown) {
     return NextResponse.json(
       { error: safeErrorMessage(error, "Failed to load workspace context") },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
-

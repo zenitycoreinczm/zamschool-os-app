@@ -1,12 +1,20 @@
 import { NextResponse } from "next/server";
 
 import { requireParentContext } from "@/lib/server-auth";
-import { applyPlatformRateLimit, platformRateLimitResponse } from "@/lib/platform-api-guard";
+import {
+  applyPlatformRateLimit,
+  platformRateLimitResponse,
+} from "@/lib/platform-api-guard";
 import { safeErrorMessage } from "@/lib/server-guards";
 import { supabaseAdmin } from "@/lib/supabase";
-import { getParentRecord, getLinkedStudents, getClassesById, buildClassLabel, buildDisplayName } from "@/lib/parent-route-utils";
-
-const READ_MOSTLY_PRIVATE_CACHE = "private, max-age=30, stale-while-revalidate=120";
+import {
+  getParentRecord,
+  getLinkedStudents,
+  getClassesById,
+  buildClassLabel,
+  buildDisplayName,
+} from "@/lib/parent-route-utils";
+import { applyEdgeCacheHeaders } from "@/lib/edge-cache";
 
 export async function GET(req: Request) {
   try {
@@ -16,6 +24,7 @@ export async function GET(req: Request) {
 
     const rate = await applyPlatformRateLimit({
       scope: "parent-children",
+      schoolId: schoolId ?? "",
       req,
       userId,
       preset: "heavyRead",
@@ -52,8 +61,8 @@ export async function GET(req: Request) {
       new Set(
         linked.profileIds
           .map((profileId) => linked.classIdByProfileId.get(profileId))
-          .filter(Boolean)
-      )
+          .filter(Boolean),
+      ),
     ) as string[];
 
     const classesById = await getClassesById(schoolId, classIds);
@@ -66,7 +75,9 @@ export async function GET(req: Request) {
         classId,
         className: buildClassLabel(classesById.get(classId || "")),
         relationship:
-          linked.relationshipByProfileId.get(row.id) || parentRecord.relation_type || null,
+          linked.relationshipByProfileId.get(row.id) ||
+          parentRecord.relation_type ||
+          null,
         email: row.email || null,
       };
     });
@@ -75,13 +86,11 @@ export async function GET(req: Request) {
   } catch (error: unknown) {
     return NextResponse.json(
       { error: safeErrorMessage(error, "Failed to load parent children") },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 function jsonWithPrivateCache(payload: unknown) {
-  const response = NextResponse.json(payload);
-  response.headers.set("Cache-Control", READ_MOSTLY_PRIVATE_CACHE);
-  return response;
+  return applyEdgeCacheHeaders(NextResponse.json(payload), "privateRead");
 }

@@ -1,10 +1,17 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { z } from "zod";
-import { applyRateLimit, buildActorRateLimitKey, parseJsonWithSchema, safeErrorMessage } from "@/lib/server-guards";
+import {
+  applyRateLimit,
+  getClientIp,
+  parseJsonWithSchema,
+  safeErrorMessage,
+} from "@/lib/server-guards";
+import { tenantActorRateLimitKey } from "@/lib/tenant-context";
 import { invalidateInboxHotReads } from "@/lib/inbox-read-cache";
 import { requireAdminContext } from "@/lib/server-auth";
 import { requireFeatureAccess } from "@/lib/feature-permissions";
+import { auditDomainWrite } from "@/lib/audit-domain";
 import { matchesRoleTarget } from "@/lib/role-audience-match";
 
 const createNotificationSchema = z.object({
@@ -23,28 +30,46 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const unreadOnly = searchParams.get("unreadOnly") === "true";
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
-    const limit = Math.min(500, Math.max(1, parseInt(searchParams.get("limit") || "100", 10)));
+    const limit = Math.min(
+      500,
+      Math.max(1, parseInt(searchParams.get("limit") || "100", 10)),
+    );
     const offset = (page - 1) * limit;
 
-    const [profileResult, notificationsResult, announcementsResult, eventsResult] = await Promise.all([
-      supabaseAdmin.from("profiles").select("role").eq("id", userId).maybeSingle(),
+    const [
+      profileResult,
+      notificationsResult,
+      announcementsResult,
+      eventsResult,
+    ] = await Promise.all([
+      supabaseAdmin
+        .from("profiles")
+        .select("role")
+        .eq("id", userId)
+        .maybeSingle(),
       supabaseAdmin
         .from("notifications")
-        .select("id, school_id, user_id, title, message, type, is_read, created_at")
+        .select(
+          "id, school_id, user_id, title, message, type, is_read, created_at",
+        )
         .eq("school_id", schoolId)
         .order("created_at", { ascending: false })
         .limit(limit)
         .range(offset, offset + limit - 1),
       supabaseAdmin
         .from("announcements")
-        .select("id, school_id, title, content, target_role, target_class_id, created_at, is_pinned")
+        .select(
+          "id, school_id, title, content, target_role, target_class_id, created_at, is_pinned",
+        )
         .eq("school_id", schoolId)
         .order("created_at", { ascending: false })
         .limit(limit)
         .range(offset, offset + limit - 1),
       supabaseAdmin
         .from("events")
-        .select("id, school_id, title, description, event_date, start_date, created_at, target_role, target_class_id")
+        .select(
+          "id, school_id, title, description, event_date, start_date, created_at, target_role, target_class_id",
+        )
         .eq("school_id", schoolId)
         .order("created_at", { ascending: false })
         .limit(limit)
@@ -62,22 +87,31 @@ export async function GET(req: Request) {
         if (row.user_id && row.user_id !== userId) return false;
         if (unreadOnly && row.is_read) return false;
         return true;
-      })
+      }),
     );
-    const announcements = normalizeAnnouncementRows((announcementsResult.data || []).filter((row: any) => {
-      const targetRole = String(row.target_role || "").trim().toLowerCase();
-      if (!targetRole || targetRole === "all") return true;
-      return matchesRoleTarget(targetRole, role);
-    }));
+    const announcements = normalizeAnnouncementRows(
+      (announcementsResult.data || []).filter((row: any) => {
+        const targetRole = String(row.target_role || "")
+          .trim()
+          .toLowerCase();
+        if (!targetRole || targetRole === "all") return true;
+        return matchesRoleTarget(targetRole, role);
+      }),
+    );
     const events = normalizeEventRows(eventsResult.data || []);
 
     const data = [...notifications, ...announcements, ...events].sort(
-      (left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime()
+      (left, right) =>
+        new Date(right.timestamp).getTime() -
+        new Date(left.timestamp).getTime(),
     );
 
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to fetch notifications") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to fetch notifications") },
+      { status: 500 },
+    );
   }
 }
 
@@ -85,16 +119,27 @@ export async function POST(req: Request) {
   try {
     const access = await requireAdminContext(req);
     if (!access.ok) return access.response;
+    const feature = await requireFeatureAccess(
+      access.context,
+      "notifications",
+      "create",
+    );
+    if (!feature.ok) return feature.response;
     const { schoolId, userId } = access.context;
     const rate = await applyRateLimit({
-      key: buildActorRateLimitKey("admin-notifications", req, userId),
+      key: tenantActorRateLimitKey({
+        scope: "admin-notifications",
+        schoolId,
+        req,
+        userId,
+      }),
       limit: 80,
       windowMs: 60_000,
     });
     if (!rate.allowed) {
       return NextResponse.json(
         { error: "Too many requests. Please try again shortly." },
-        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } }
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
       );
     }
 
@@ -112,16 +157,35 @@ export async function POST(req: Request) {
 
     const notificationsQuery = supabaseAdmin.from("notifications");
     const mutation = payload.dedupe_key
-      ? notificationsQuery.upsert(payload, { onConflict: "school_id,dedupe_key" })
+      ? notificationsQuery.upsert(payload, {
+          onConflict: "school_id,dedupe_key",
+        })
       : notificationsQuery.insert(payload);
 
     const { data, error } = await mutation.select().single();
 
     if (error) throw error;
 
+    await auditDomainWrite({
+      schoolId,
+      userId,
+      action: "notifications.create",
+      entityType: "notification",
+      entityId: data.id,
+      newData: {
+        recipientId: data.user_id,
+        title: data.title,
+        type: data.type,
+      },
+      ipAddress: getClientIp(req),
+    });
+
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to create notification") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to create notification") },
+      { status: 500 },
+    );
   }
 }
 
@@ -129,12 +193,21 @@ export async function PUT(req: Request) {
   try {
     const access = await requireAdminContext(req);
     if (!access.ok) return access.response;
+    const feature = await requireFeatureAccess(
+      access.context,
+      "notifications",
+      "update",
+    );
+    if (!feature.ok) return feature.response;
     const { schoolId } = access.context;
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 
     if (!id) {
-      return NextResponse.json({ error: "Notification ID is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Notification ID is required" },
+        { status: 400 },
+      );
     }
 
     const { error } = await supabaseAdmin
@@ -147,9 +220,22 @@ export async function PUT(req: Request) {
 
     invalidateInboxHotReads(access.context.userId, schoolId);
 
+    await auditDomainWrite({
+      schoolId,
+      userId: access.context.userId,
+      action: "notifications.mark_read",
+      entityType: "notification",
+      entityId: id,
+      newData: { isRead: true },
+      ipAddress: getClientIp(req),
+    });
+
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to mark notification as read") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to mark notification as read") },
+      { status: 500 },
+    );
   }
 }
 
@@ -157,12 +243,21 @@ export async function DELETE(req: Request) {
   try {
     const access = await requireAdminContext(req);
     if (!access.ok) return access.response;
+    const feature = await requireFeatureAccess(
+      access.context,
+      "notifications",
+      "delete",
+    );
+    if (!feature.ok) return feature.response;
     const { schoolId } = access.context;
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 
     if (!id) {
-      return NextResponse.json({ error: "Notification ID is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Notification ID is required" },
+        { status: 400 },
+      );
     }
 
     const { error } = await supabaseAdmin
@@ -173,9 +268,21 @@ export async function DELETE(req: Request) {
 
     if (error) throw error;
 
+    await auditDomainWrite({
+      schoolId,
+      userId: access.context.userId,
+      action: "notifications.delete",
+      entityType: "notification",
+      entityId: id,
+      ipAddress: getClientIp(req),
+    });
+
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to delete notification") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to delete notification") },
+      { status: 500 },
+    );
   }
 }
 
@@ -214,6 +321,11 @@ function normalizeEventRows(rows: any[]) {
     body: String(row.description || "Upcoming school event"),
     href: "/app/events",
     status: "read",
-    timestamp: String(row.event_date || row.start_date || row.created_at || new Date().toISOString()),
+    timestamp: String(
+      row.event_date ||
+        row.start_date ||
+        row.created_at ||
+        new Date().toISOString(),
+    ),
   }));
 }

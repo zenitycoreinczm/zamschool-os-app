@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 
 export type DetailBadge = {
@@ -36,22 +36,60 @@ export default function DetailPanel({
   children,
   onClose,
 }: DetailPanelProps) {
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
     if (!open) return;
 
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
+
     const previousOverflow = document.body.style.overflow;
+    const panel = panelRef.current;
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         onClose();
+        return;
+      }
+      if (event.key !== "Tab" || !panel) return;
+
+      const focusable = panel.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      if (event.shiftKey) {
+        if (document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
       }
     };
 
     document.body.style.overflow = "hidden";
     window.addEventListener("keydown", handleKeyDown);
 
+    // Focus the first focusable element inside the panel
+    requestAnimationFrame(() => {
+      const firstFocusable = panel?.querySelector<HTMLElement>(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      firstFocusable?.focus();
+    });
+
     return () => {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeyDown);
+      previousFocusRef.current?.focus();
     };
   }, [onClose, open]);
 
@@ -68,8 +106,14 @@ export default function DetailPanel({
         onClick={onClose}
       />
 
-      <aside className="absolute inset-y-0 right-0 flex w-full justify-end">
-        <div className="flex h-full w-full max-w-2xl flex-col border-l border-slate-200 bg-white shadow-2xl">
+      <aside
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="detail-panel-title"
+        className="absolute inset-y-0 right-0 flex w-full justify-end"
+      >
+        <div className="flex h-full w-full max-w-2xl flex-col border-l border-slate-200 bg-white shadow-workspace-lg">
           <div className="border-b border-slate-200 bg-slate-50 px-5 py-5 md:px-6">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0 space-y-3">
@@ -77,7 +121,7 @@ export default function DetailPanel({
                   {eyebrow}
                 </p>
                 <div>
-                  <h2 className="text-2xl font-semibold leading-tight text-slate-900">{title}</h2>
+                  <h2 id="detail-panel-title" className="text-2xl font-semibold leading-tight text-slate-900">{title}</h2>
                   {subtitle ? (
                     <p className="mt-2 text-sm leading-6 text-slate-500">{subtitle}</p>
                   ) : null}
@@ -101,7 +145,8 @@ export default function DetailPanel({
               <button
                 type="button"
                 onClick={onClose}
-                className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50"
+                className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-slate-200 bg-white text-slate-600 shadow-sm transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200"
+                aria-label="Close panel"
               >
                 <X className="h-4 w-4" />
               </button>

@@ -7,8 +7,8 @@ const AVATAR_OBJECT_REF_PREFIX = "avatar-object:";
 const LEGACY_PUBLIC_SEGMENT = `/storage/v1/object/public/${AVATAR_BUCKET}/`;
 
 export function buildAvatarObjectPath(schoolId: string, userId: string) {
-  const safeSchool = String(schoolId || "default").replace(/[^a-zA-Z0-9_-]/g, "_");
-  const safeUser = String(userId).replace(/[^a-zA-Z0-9_-]/g, "_");
+  const safeSchool = sanitizeAvatarPathSegment(schoolId, "schoolId");
+  const safeUser = sanitizeAvatarPathSegment(userId, "userId");
   return `${safeSchool}/${safeUser}/avatar.webp`;
 }
 
@@ -20,10 +20,14 @@ export type AvatarIdentity = {
 export function buildProtectedAvatarUrl(
   schoolId: string,
   userId: string,
-  updatedAt: number = Date.now()
+  updatedAt: number = Date.now(),
 ): string {
-  const safeSchool = encodeURIComponent(String(schoolId || "default"));
-  const safeUser = encodeURIComponent(String(userId));
+  const safeSchool = encodeURIComponent(
+    requireAvatarIdentitySegment(schoolId, "schoolId"),
+  );
+  const safeUser = encodeURIComponent(
+    requireAvatarIdentitySegment(userId, "userId"),
+  );
   return `${AVATAR_MEDIA_ROUTE_PREFIX}/${safeSchool}/${safeUser}?v=${updatedAt}`;
 }
 
@@ -61,14 +65,20 @@ export function parseAvatarObjectPath(value: string): string | null {
 
   if (trimmed.includes(LEGACY_PUBLIC_SEGMENT)) {
     const index = trimmed.indexOf(LEGACY_PUBLIC_SEGMENT);
-    const path = trimmed.slice(index + LEGACY_PUBLIC_SEGMENT.length).split("?")[0].split("#")[0];
+    const path = trimmed
+      .slice(index + LEGACY_PUBLIC_SEGMENT.length)
+      .split("?")[0]
+      .split("#")[0];
     return path.includes("/") ? path : null;
   }
 
   const bucketMarker = `/${AVATAR_BUCKET}/`;
   const bucketIndex = trimmed.indexOf(bucketMarker);
   if (bucketIndex >= 0) {
-    const path = trimmed.slice(bucketIndex + bucketMarker.length).split("?")[0].split("#")[0];
+    const path = trimmed
+      .slice(bucketIndex + bucketMarker.length)
+      .split("?")[0]
+      .split("#")[0];
     return path.includes("/") ? path : null;
   }
 
@@ -81,7 +91,7 @@ export function parseAvatarObjectPath(value: string): string | null {
 
 export function resolveAvatarIdentity(
   stored: string | null | undefined,
-  fallback: AvatarIdentity
+  fallback: AvatarIdentity,
 ): AvatarIdentity {
   const objectPath = stored ? parseAvatarObjectPath(stored) : null;
   if (!objectPath) {
@@ -98,12 +108,16 @@ export function resolveAvatarIdentity(
 /** Convert any stored avatar value to the protected app URL (never expose public storage URLs). */
 export function toProtectedAvatarUrl(
   stored: string | null | undefined,
-  identity: AvatarIdentity
+  identity: AvatarIdentity,
 ): string | null {
   const trimmed = String(stored || "").trim();
   if (!trimmed) return null;
 
   const resolved = resolveAvatarIdentity(trimmed, identity);
+  if (!resolved.schoolId || !resolved.userId) {
+    return null;
+  }
+
   const cacheBust = readCacheBustParam(trimmed) ?? Date.now();
   return buildProtectedAvatarUrl(resolved.schoolId, resolved.userId, cacheBust);
 }
@@ -115,16 +129,35 @@ export function isProtectedAvatarUrl(url: string | null | undefined): boolean {
 
 export function isAllowedAvatarUrlForProfileUpdate(
   url: string | null | undefined,
-  identity: AvatarIdentity
+  identity: AvatarIdentity,
 ): boolean {
   const trimmed = String(url || "").trim();
   if (!trimmed) return true;
-  return isProtectedAvatarUrl(trimmed) && Boolean(parseAvatarObjectPath(trimmed));
+  return (
+    isProtectedAvatarUrl(trimmed) && Boolean(parseAvatarObjectPath(trimmed))
+  );
+}
+
+function sanitizeAvatarPathSegment(value: string, name: string) {
+  return requireAvatarIdentitySegment(value, name).replace(
+    /[^a-zA-Z0-9_-]/g,
+    "_",
+  );
+}
+
+function requireAvatarIdentitySegment(value: string, name: string) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) {
+    throw new Error(`Avatar ${name} is required`);
+  }
+  return trimmed;
 }
 
 function readCacheBustParam(value: string): number | null {
   try {
-    const url = value.startsWith("http") ? new URL(value) : new URL(value, "http://localhost");
+    const url = value.startsWith("http")
+      ? new URL(value)
+      : new URL(value, "http://localhost");
     const raw = url.searchParams.get("v") || url.searchParams.get("updated");
     if (!raw) return null;
     const parsed = Number(raw);

@@ -13,7 +13,7 @@ You are writing to one of four stores.
 
 ## Migration policy
 
-Migrations live under `supabase/migrations/` and are applied in lexical order. The apply order is documented in `docs/MIGRATION_APPLY_ORDER.md` (archived in `docs/_archive/data/`). You should:
+Migrations live under `supabase/migrations/` and are applied in lexical order (the timestamp prefix in the filename is the sort key). You should:
 
 - Never edit a migration after it has been applied to a non-local environment.
 - Add a new migration for every schema change, including indexes and policy changes.

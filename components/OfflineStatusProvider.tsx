@@ -4,13 +4,19 @@ import { useEffect } from "react";
 
 import OfflineStatusBanner from "@/components/OfflineStatusBanner";
 import { fetchWithOfflineSupport } from "@/lib/offline-fetch";
-import { OFFLINE_CORE_API_URLS, OFFLINE_CORE_PAGE_URLS } from "@/lib/offline-support";
+import {
+  OFFLINE_CORE_API_URLS,
+  OFFLINE_CORE_PAGE_URLS,
+} from "@/lib/offline-support";
 import { setNetworkOffline, setNetworkOnline } from "@/lib/network-status";
-import { supabase } from "@/lib/supabase";
 
 const OFFLINE_WARMUP_KEY = "zamschool-offline-core-warmed-v1";
 
-export default function OfflineStatusProvider({ children }: { children: React.ReactNode }) {
+export default function OfflineStatusProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
@@ -61,15 +67,12 @@ async function warmOfflineCore() {
 
   window.sessionStorage.setItem(OFFLINE_WARMUP_KEY, "1");
 
-  const { data } = await supabase.auth.getSession();
-  const accessToken = data.session?.access_token || null;
-
   const pageWarmups = OFFLINE_CORE_PAGE_URLS.map((path) =>
     fetchWithOfflineSupport(path, {
       method: "GET",
       credentials: "include",
       cache: "no-store",
-    }).catch(() => null)
+    }).catch(() => null),
   );
 
   const apiWarmups = OFFLINE_CORE_API_URLS.map((path) =>
@@ -77,8 +80,7 @@ async function warmOfflineCore() {
       method: "GET",
       credentials: "same-origin",
       cache: "no-store",
-      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
-    }).catch(() => null)
+    }).catch(() => null),
   );
 
   await Promise.allSettled([...pageWarmups, ...apiWarmups]);

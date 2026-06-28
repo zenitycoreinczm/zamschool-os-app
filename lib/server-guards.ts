@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { isRedisConfigured, redisSlidingWindowHit } from "./redis";
-import { rateLimitKey } from "./redis-keys";
+import { isRedisConfigured, redisSlidingWindowHit } from "./redis/client";
+import { rateLimitKey } from "@/lib/redis/keys";
 
 export { safeErrorMessage } from "./safe-error";
 
@@ -8,7 +8,12 @@ interface RateBucketData {
   timestamps: number[];
   lastAccess: number;
 }
+interface LocalBypassData {
+  expiresAt: number;
+  remaining: number;
+}
 const memoryRateBuckets = new Map<string, RateBucketData>();
+const localBypassBuckets = new Map<string, LocalBypassData>();
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // Clean up every 5 minutes
 const STALE_KEY_THRESHOLD_MS = 30 * 60 * 1000; // Remove keys unused for 30 minutes
 
@@ -36,7 +41,11 @@ export function getClientIp(req: Request): string {
 }
 
 /** Prefer per-user keys for authenticated routes so shared IPs (school LAN, dev) do not block everyone. */
-export function buildActorRateLimitKey(scope: string, req: Request, userId?: string | null) {
+export function buildActorRateLimitKey(
+  scope: string,
+  req: Request,
+  userId?: string | null,
+) {
   const ip = getClientIp(req);
   if (userId) {
     return `${scope}:user:${userId}`;
@@ -48,7 +57,9 @@ function checkMemoryRateLimit(key: string, limit: number, windowMs: number) {
   const now = Date.now();
   const bucketKey = `rl:${key}`;
   const existing = memoryRateBuckets.get(bucketKey);
-  const kept = (existing?.timestamps || []).filter((timestamp) => timestamp > now - windowMs);
+  const kept = (existing?.timestamps || []).filter(
+    (timestamp) => timestamp > now - windowMs,
+  );
 
   if (kept.length >= limit) {
     const oldest = kept[0] ?? now;
@@ -70,9 +81,27 @@ export async function applyRateLimit(params: {
   limit: number;
   windowMs: number;
   failOpen?: boolean;
+  localBypass?: {
+    ttlMs: number;
+    maxRequests: number;
+  };
 }) {
   if (isRedisConfigured()) {
     const now = Date.now();
+    const bypassKey = `local-bypass:${params.key}`;
+
+    if (params.localBypass) {
+      const bypass = localBypassBuckets.get(bypassKey);
+      if (bypass && bypass.expiresAt > now && bypass.remaining > 0) {
+        bypass.remaining -= 1;
+        localBypassBuckets.set(bypassKey, bypass);
+        return { allowed: true as const };
+      }
+      if (bypass && bypass.expiresAt <= now) {
+        localBypassBuckets.delete(bypassKey);
+      }
+    }
+
     try {
       const redisResult = await redisSlidingWindowHit({
         key: rateLimitKey("api", params.key),
@@ -86,9 +115,15 @@ export async function applyRateLimit(params: {
             allowed: false as const,
             retryAfterSec: Math.max(
               1,
-              Math.ceil((redisResult.resetTime - now) / 1000)
+              Math.ceil((redisResult.resetTime - now) / 1000),
             ),
           };
+        }
+        if (params.localBypass) {
+          localBypassBuckets.set(bypassKey, {
+            expiresAt: now + params.localBypass.ttlMs,
+            remaining: Math.max(0, params.localBypass.maxRequests - 1),
+          });
         }
         return { allowed: true as const };
       }
@@ -107,20 +142,29 @@ export async function applyRateLimit(params: {
     }
   }
 
-  const result = checkMemoryRateLimit(params.key, params.limit, params.windowMs);
+  const result = checkMemoryRateLimit(
+    params.key,
+    params.limit,
+    params.windowMs,
+  );
   if (!result.allowed && params.failOpen) {
     return { allowed: true as const };
   }
   return result;
 }
 
-export async function parseJsonWithSchema<T>(req: Request, schema: z.ZodSchema<T>): Promise<T> {
+export async function parseJsonWithSchema<T>(
+  req: Request,
+  schema: z.ZodSchema<T>,
+): Promise<T> {
   try {
     const body = await req.json();
     return schema.parse(body);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      throw new Error(`Invalid request data: ${error.issues.map((issue) => issue.message).join(", ")}`);
+      throw new Error(
+        `Invalid request data: ${error.issues.map((issue) => issue.message).join(", ")}`,
+      );
     }
     throw error;
   }

@@ -1,10 +1,16 @@
-import { readFileSync, readdirSync } from "node:fs";
-import { resolve } from "node:path";
+/**
+ * Local migration contract check (no live DB required).
+ *
+ * Usage:
+ *   node scripts/schema-check.mjs
+ *   node scripts/schema-check.mjs --strict
+ */
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 const strict = process.argv.includes("--strict");
 const projectRoot = process.cwd();
-const migrationsDir = resolve(projectRoot, "migrations");
-const schemaPath = resolve(projectRoot, "schema.sql");
+const migrationsDir = resolve(projectRoot, "supabase", "migrations");
 
 const requiredTables = [
   "schools",
@@ -23,33 +29,69 @@ const requiredTables = [
   "audit_logs",
 ];
 
-const schema = readFileSync(schemaPath, "utf8");
-const sqlFiles = readdirSync(migrationsDir)
-  .filter((entry) => entry.endsWith(".sql"))
-  .sort();
-const migrations = sqlFiles.filter((entry) => /^\d{3}_.+\.sql$/.test(entry));
-const migrationSql = migrations
-  .map((entry) => readFileSync(resolve(migrationsDir, entry), "utf8"))
+function listMigrationFiles() {
+  if (!statSync(migrationsDir, { throwIfNoEntry: false })?.isDirectory()) {
+    return [];
+  }
+
+  return readdirSync(migrationsDir)
+    .filter((entry) => entry.endsWith(".sql"))
+    .sort();
+}
+
+const migrationFiles = listMigrationFiles();
+const migrationSql = migrationFiles
+  .map((entry) => readFileSync(join(migrationsDir, entry), "utf8"))
   .join("\n\n");
-const schemaContract = `${schema}\n\n${migrationSql}`;
 
 const missingTables = requiredTables.filter((table) => {
-  const pattern = new RegExp(`create\\s+table\\s+(if\\s+not\\s+exists\\s+)?(?:public\\.)?${table}\\b`, "i");
-  return !pattern.test(schemaContract);
+  const pattern = new RegExp(
+    `create\\s+table\\s+(if\\s+not\\s+exists\\s+)?(?:public\\.)?["']?${table}["']?\\b`,
+    "i",
+  );
+  return !pattern.test(migrationSql);
 });
 
-const duplicateMigrationNumbers = migrations
-  .map((entry) => entry.match(/^(\d{3})/)?.[1])
-  .filter(Boolean)
-  .filter((number, index, list) => list.indexOf(number) !== index);
-const aggregateMigrations = sqlFiles.filter((entry) => !migrations.includes(entry));
+const duplicateNames = migrationFiles.filter(
+  (name, index, list) => list.indexOf(name) !== index,
+);
+
+const hasBaseline = migrationFiles.some((entry) =>
+  /baseline/i.test(entry),
+);
+
+const createTableMatches = [...migrationSql.matchAll(
+  /create\s+table\s+(?:if\s+not\s+exists\s+)?(?:public\.)?["']?([a-z_]+)["']?\s/gi,
+)].map((match) => match[1].toLowerCase());
+
+const uniqueTables = [...new Set(createTableMatches)];
+const rlsEnabledCount = (
+  migrationSql.match(/enable\s+row\s+level\s+security/gi) || []
+).length;
+
+const tablesMissingRls = uniqueTables.filter((table) => {
+  const rlsPattern = new RegExp(
+    `alter\\s+table\\s+(?:if\\s+exists\\s+)?(?:public\\.)?["']?${table}["']?\\s+enable\\s+row\\s+level\\s+security`,
+    "i",
+  );
+  return !rlsPattern.test(migrationSql);
+});
 
 const result = {
-  ok: missingTables.length === 0 && duplicateMigrationNumbers.length === 0,
-  migrationCount: migrations.length,
+  ok:
+    migrationFiles.length > 0 &&
+    hasBaseline &&
+    missingTables.length === 0 &&
+    duplicateNames.length === 0 &&
+    tablesMissingRls.length === 0,
+  migrationCount: migrationFiles.length,
+  migrationFiles,
+  hasBaseline,
+  tableCount: uniqueTables.length,
+  rlsEnabledStatements: rlsEnabledCount,
   missingTables,
-  duplicateMigrationNumbers,
-  aggregateMigrations,
+  duplicateNames,
+  tablesMissingRls,
 };
 
 console.log(JSON.stringify(result, null, 2));

@@ -23,7 +23,7 @@ type SearchContext = {
 
 export async function runWorkspaceSearch(
   context: ActorContext,
-  rawQuery: string
+  rawQuery: string,
 ): Promise<WorkspaceSearchResult[]> {
   const query = sanitizeWorkspaceSearchQuery(rawQuery);
   if (query.length < 2 || !context.schoolId) {
@@ -61,8 +61,15 @@ export async function runWorkspaceSearch(
     tasks.push(searchStudentAssignments(searchContext, query));
   }
 
-  const canReadUsers = await checkFeaturePermission(permissionContext, "users", "read");
-  if (!canReadUsers && (context.role === "PAYMENTS" || context.role === "BURSAR")) {
+  const canReadUsers = await checkFeaturePermission(
+    permissionContext,
+    "users",
+    "read",
+  );
+  if (
+    !canReadUsers &&
+    (context.role === "PAYMENTS" || context.role === "BURSAR")
+  ) {
     tasks.push(searchPaymentStudents(searchContext, query));
   }
 
@@ -74,16 +81,28 @@ export async function runWorkspaceSearch(
   return groups.flat();
 }
 
-async function searchPeople(context: SearchContext, query: string): Promise<WorkspaceSearchResult[]> {
+async function searchPeople(
+  context: SearchContext,
+  query: string,
+): Promise<WorkspaceSearchResult[]> {
   const pattern = toWorkspaceSearchPattern(query);
-  const roleValues = ["student", "teacher", "parent", "STUDENT", "TEACHER", "PARENT"];
+  const roleValues = [
+    "student",
+    "teacher",
+    "parent",
+    "STUDENT",
+    "TEACHER",
+    "PARENT",
+  ];
 
   const { data, error } = await supabaseAdmin
     .from("profiles")
     .select("id, first_name, last_name, email, role")
     .eq("school_id", context.schoolId)
     .in("role", roleValues)
-    .or(`first_name.ilike.${pattern},last_name.ilike.${pattern},email.ilike.${pattern}`)
+    .or(
+      `first_name.ilike.${pattern},last_name.ilike.${pattern},email.ilike.${pattern}`,
+    )
     .order("first_name", { ascending: true })
     .limit(RESULT_LIMIT);
 
@@ -91,7 +110,9 @@ async function searchPeople(context: SearchContext, query: string): Promise<Work
     throw error;
   }
 
-  const profileIds = (data || []).map((row: any) => String(row.id || "")).filter(Boolean);
+  const profileIds = (data || [])
+    .map((row: any) => String(row.id || ""))
+    .filter(Boolean);
   const enrichment = await loadPeopleEnrichment(context.schoolId, profileIds);
 
   return (data || []).map((row: any) => {
@@ -119,7 +140,7 @@ async function searchPeople(context: SearchContext, query: string): Promise<Work
 
 async function searchTeacherStudents(
   context: SearchContext,
-  query: string
+  query: string,
 ): Promise<WorkspaceSearchResult[]> {
   const scope = await loadTeacherAssignmentScope({
     schoolId: context.schoolId,
@@ -142,7 +163,11 @@ async function searchTeacherStudents(
   }
 
   const profileIds = Array.from(
-    new Set((studentRows || []).map((row: any) => String(row.profile_id || row.id || "")).filter(Boolean))
+    new Set(
+      (studentRows || [])
+        .map((row: any) => String(row.profile_id || row.id || ""))
+        .filter(Boolean),
+    ),
   );
 
   if (profileIds.length === 0) {
@@ -155,7 +180,9 @@ async function searchTeacherStudents(
     .select("id, first_name, last_name, email, role")
     .eq("school_id", context.schoolId)
     .in("id", profileIds)
-    .or(`first_name.ilike.${pattern},last_name.ilike.${pattern},email.ilike.${pattern}`)
+    .or(
+      `first_name.ilike.${pattern},last_name.ilike.${pattern},email.ilike.${pattern}`,
+    )
     .order("first_name", { ascending: true })
     .limit(RESULT_LIMIT);
 
@@ -165,31 +192,44 @@ async function searchTeacherStudents(
 
   const classNameById = await loadClassNames(
     context.schoolId,
-    Array.from(new Set((studentRows || []).map((row: any) => String(row.class_id || "")).filter(Boolean)))
+    Array.from(
+      new Set(
+        (studentRows || [])
+          .map((row: any) => String(row.class_id || ""))
+          .filter(Boolean),
+      ),
+    ),
   );
   const studentMetaByProfileId = new Map(
-    (studentRows || []).map((row: any) => [String(row.profile_id || row.id || ""), row])
+    (studentRows || []).map((row: any) => [
+      String(row.profile_id || row.id || ""),
+      row,
+    ]),
   );
 
   return (profiles || []).map((row: any) => {
     const profileId = String(row.id || "");
     const student = studentMetaByProfileId.get(profileId);
-    const className = classNameById.get(String(student?.class_id || "")) || null;
+    const className =
+      classNameById.get(String(student?.class_id || "")) || null;
     const label = getDisplayName(row);
 
     return {
       id: `person:${profileId}`,
       kind: "person" as const,
       label,
-      hint: ["Student", student?.admission_number, className].filter(Boolean).join(" · ") || "Student",
-      href: buildWorkspaceListHref("/teacher/students", label),
+      hint:
+        ["Student", student?.admission_number, className]
+          .filter(Boolean)
+          .join(" · ") || "Student",
+      href: buildWorkspaceListHref("/app/teacher/students", label),
     };
   });
 }
 
 async function searchParentChildren(
   context: SearchContext,
-  query: string
+  query: string,
 ): Promise<WorkspaceSearchResult[]> {
   const { data: parentRows, error: parentError } = await supabaseAdmin
     .from("parents")
@@ -218,7 +258,11 @@ async function searchParentChildren(
   }
 
   const studentIds = Array.from(
-    new Set((links || []).map((row: any) => String(row.student_id || "")).filter(Boolean))
+    new Set(
+      (links || [])
+        .map((row: any) => String(row.student_id || ""))
+        .filter(Boolean),
+    ),
   );
 
   if (studentIds.length === 0) {
@@ -236,7 +280,11 @@ async function searchParentChildren(
   }
 
   const profileIds = Array.from(
-    new Set((studentRows || []).map((row: any) => String(row.profile_id || row.id || "")).filter(Boolean))
+    new Set(
+      (studentRows || [])
+        .map((row: any) => String(row.profile_id || row.id || ""))
+        .filter(Boolean),
+    ),
   );
 
   if (profileIds.length === 0) {
@@ -249,7 +297,9 @@ async function searchParentChildren(
     .select("id, first_name, last_name, email")
     .eq("school_id", context.schoolId)
     .in("id", profileIds)
-    .or(`first_name.ilike.${pattern},last_name.ilike.${pattern},email.ilike.${pattern}`)
+    .or(
+      `first_name.ilike.${pattern},last_name.ilike.${pattern},email.ilike.${pattern}`,
+    )
     .order("first_name", { ascending: true })
     .limit(RESULT_LIMIT);
 
@@ -259,10 +309,19 @@ async function searchParentChildren(
 
   const classNameById = await loadClassNames(
     context.schoolId,
-    Array.from(new Set((studentRows || []).map((row: any) => String(row.class_id || "")).filter(Boolean)))
+    Array.from(
+      new Set(
+        (studentRows || [])
+          .map((row: any) => String(row.class_id || ""))
+          .filter(Boolean),
+      ),
+    ),
   );
   const studentMetaByProfileId = new Map(
-    (studentRows || []).map((row: any) => [String(row.profile_id || row.id || ""), row])
+    (studentRows || []).map((row: any) => [
+      String(row.profile_id || row.id || ""),
+      row,
+    ]),
   );
 
   return (profiles || []).map((row: any) => {
@@ -274,10 +333,14 @@ async function searchParentChildren(
       id: `person:${profileId}`,
       kind: "person" as const,
       label,
-      hint: ["Child", student?.admission_number, classNameById.get(String(student?.class_id || ""))]
+      hint: [
+        "Child",
+        student?.admission_number,
+        classNameById.get(String(student?.class_id || "")),
+      ]
         .filter(Boolean)
         .join(" · "),
-      href: buildWorkspaceListHref("/parent/attendance", label, {
+      href: buildWorkspaceListHref("/app/parent/attendance", label, {
         studentId: profileId,
       }),
     };
@@ -286,7 +349,7 @@ async function searchParentChildren(
 
 async function searchPaymentStudents(
   context: SearchContext,
-  query: string
+  query: string,
 ): Promise<WorkspaceSearchResult[]> {
   const pattern = toWorkspaceSearchPattern(query);
   const { data, error } = await supabaseAdmin
@@ -294,7 +357,9 @@ async function searchPaymentStudents(
     .select("id, first_name, last_name, email, role")
     .eq("school_id", context.schoolId)
     .in("role", roleDatabaseValues("STUDENT"))
-    .or(`first_name.ilike.${pattern},last_name.ilike.${pattern},email.ilike.${pattern}`)
+    .or(
+      `first_name.ilike.${pattern},last_name.ilike.${pattern},email.ilike.${pattern}`,
+    )
     .order("first_name", { ascending: true })
     .limit(RESULT_LIMIT);
 
@@ -302,7 +367,9 @@ async function searchPaymentStudents(
     throw error;
   }
 
-  const profileIds = (data || []).map((row: any) => String(row.id || "")).filter(Boolean);
+  const profileIds = (data || [])
+    .map((row: any) => String(row.id || ""))
+    .filter(Boolean);
   const enrichment = await loadPeopleEnrichment(context.schoolId, profileIds);
 
   return (data || []).map((row: any) => {
@@ -314,13 +381,18 @@ async function searchPaymentStudents(
       id: `payment-student:${profileId}`,
       kind: "person" as const,
       label,
-      hint: ["Student account", extra?.admissionNumber, extra?.className].filter(Boolean).join(" · "),
+      hint: ["Student account", extra?.admissionNumber, extra?.className]
+        .filter(Boolean)
+        .join(" · "),
       href: buildWorkspaceListHref("/app/payments/students", label),
     };
   });
 }
 
-async function searchClasses(context: SearchContext, query: string): Promise<WorkspaceSearchResult[]> {
+async function searchClasses(
+  context: SearchContext,
+  query: string,
+): Promise<WorkspaceSearchResult[]> {
   const pattern = toWorkspaceSearchPattern(query);
   const { data, error } = await supabaseAdmin
     .from("classes")
@@ -351,7 +423,7 @@ async function searchClasses(context: SearchContext, query: string): Promise<Wor
 
 async function searchTeacherClasses(
   context: SearchContext,
-  query: string
+  query: string,
 ): Promise<WorkspaceSearchResult[]> {
   const scope = await loadTeacherAssignmentScope({
     schoolId: context.schoolId,
@@ -385,14 +457,19 @@ async function searchTeacherClasses(
         kind: "class" as const,
         label,
         hint,
-        href: "/teacher/classes",
+        href: "/app/teacher/classes",
       };
     })
-    .filter((row) => matchesWorkspaceSearchQuery(`${row.label} ${row.hint}`, query))
+    .filter((row) =>
+      matchesWorkspaceSearchQuery(`${row.label} ${row.hint}`, query),
+    )
     .slice(0, RESULT_LIMIT);
 }
 
-async function searchSubjects(context: SearchContext, query: string): Promise<WorkspaceSearchResult[]> {
+async function searchSubjects(
+  context: SearchContext,
+  query: string,
+): Promise<WorkspaceSearchResult[]> {
   const pattern = toWorkspaceSearchPattern(query);
   const { data, error } = await supabaseAdmin
     .from("subjects")
@@ -426,7 +503,7 @@ async function searchSubjects(context: SearchContext, query: string): Promise<Wo
 
 async function searchAnnouncements(
   context: SearchContext,
-  query: string
+  query: string,
 ): Promise<WorkspaceSearchResult[]> {
   const pattern = toWorkspaceSearchPattern(query);
   const { data, error } = await supabaseAdmin
@@ -446,7 +523,7 @@ async function searchAnnouncements(
 
   const announcementsHref =
     context.role === "STUDENT"
-      ? buildWorkspaceListHref("/student/announcements", query)
+      ? buildWorkspaceListHref("/app/student/announcements", query)
       : context.role === "PARENT"
         ? buildWorkspaceListHref("/app/announcements", query)
         : buildWorkspaceListHref("/app/announcements", query);
@@ -466,7 +543,10 @@ async function searchAnnouncements(
   });
 }
 
-async function searchEvents(context: SearchContext, query: string): Promise<WorkspaceSearchResult[]> {
+async function searchEvents(
+  context: SearchContext,
+  query: string,
+): Promise<WorkspaceSearchResult[]> {
   const pattern = toWorkspaceSearchPattern(query);
   const { data, error } = await supabaseAdmin
     .from("events")
@@ -484,12 +564,17 @@ async function searchEvents(context: SearchContext, query: string): Promise<Work
   }
 
   const eventsHref =
-    context.role === "STUDENT" ? "/student" : context.role === "PARENT" ? "/parent" : "/app/events";
+    context.role === "STUDENT"
+      ? "/app/student"
+      : context.role === "PARENT"
+        ? "/app/parent"
+        : "/app/events";
 
   return (data || []).map((row: any) => {
     const eventId = String(row.id || "");
     const label = String(row.title || "Event").trim();
-    const hint = [row.event_date, row.location].filter(Boolean).join(" · ") || "Event";
+    const hint =
+      [row.event_date, row.location].filter(Boolean).join(" · ") || "Event";
 
     return {
       id: `event:${eventId}`,
@@ -503,7 +588,7 @@ async function searchEvents(context: SearchContext, query: string): Promise<Work
 
 async function searchStudentAssignments(
   context: SearchContext,
-  query: string
+  query: string,
 ): Promise<WorkspaceSearchResult[]> {
   const { data: studentRows, error: studentError } = await supabaseAdmin
     .from("students")
@@ -545,7 +630,7 @@ async function searchStudentAssignments(
       kind: "assignment" as const,
       label,
       hint: String(hint),
-      href: buildWorkspaceListHref("/student/assignments", label),
+      href: buildWorkspaceListHref("/app/student/assignments", label),
     };
   });
 }
@@ -553,7 +638,11 @@ async function searchStudentAssignments(
 async function loadPeopleEnrichment(schoolId: string, profileIds: string[]) {
   const enrichment = new Map<
     string,
-    { admissionNumber?: string | null; className?: string | null; employeeId?: string | null }
+    {
+      admissionNumber?: string | null;
+      className?: string | null;
+      employeeId?: string | null;
+    }
   >();
 
   if (profileIds.length === 0) {
@@ -585,7 +674,10 @@ async function loadPeopleEnrichment(schoolId: string, profileIds: string[]) {
   }
 
   const classNameById = new Map(
-    (classesResult.data || []).map((row: any) => [String(row.id || ""), String(row.name || "").trim()])
+    (classesResult.data || []).map((row: any) => [
+      String(row.id || ""),
+      String(row.name || "").trim(),
+    ]),
   );
 
   for (const row of studentsResult.data || []) {
@@ -642,8 +734,14 @@ function formatRoleLabel(role: string) {
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
-function isMissingRelationError(error: { code?: string; message?: string } | null) {
+function isMissingRelationError(
+  error: { code?: string; message?: string } | null,
+) {
   const code = String(error?.code || "");
   const message = String(error?.message || "").toLowerCase();
-  return code === "42P01" || message.includes("does not exist") || message.includes("could not find");
+  return (
+    code === "42P01" ||
+    message.includes("does not exist") ||
+    message.includes("could not find")
+  );
 }

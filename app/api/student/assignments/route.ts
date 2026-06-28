@@ -20,6 +20,7 @@ export async function GET(req: Request) {
 
     const rate = await applyPlatformRateLimit({
       scope: "student-assignments",
+      schoolId,
       req,
       userId,
       preset: "heavyRead",

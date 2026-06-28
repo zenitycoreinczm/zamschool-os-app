@@ -4,24 +4,24 @@ This document describes what it takes to ship: the readiness gates, the sign-off
 
 ## Readiness gates
 
-Before a release goes out, the following must be green. Each gate has an owner and a verification command.
+Before a release goes out, the following must be green. Gates marked **(in-repo)** are enforced by `.github/workflows/ci.yml` plus direct local commands. Gates marked **(out-of-repo)** are tracked in the team's pre-release checklist and run from the wiki / external harness.
 
-1. **Build green.** `npm run build` succeeds. Owner: any developer.
-2. **Lint green.** `npm run lint` reports zero errors. Owner: any developer.
-3. **Tests green.** `npm test` and `npm run test:security` both pass. Owner: any developer.
-4. **Schema green.** `npm run schema:check:strict` passes. Owner: the engineer who touched a migration.
-5. **Tenant audit green.** `npm run audit:tenant:strict` passes. Owner: the engineer who touched a server file.
-6. **Load test green.** The most recent `npm run load:test:tier2` run is below the thresholds in `OPERATIONS.md`. Owner: ops.
-7. **DR drill green.** A successful drill in the last 90 days. Owner: ops.
+1. **(in-repo) Build green.** `npm run build` succeeds. Owner: any developer.
+2. **(in-repo) Lint green.** `npm run lint` reports zero errors. Owner: any developer.
+3. **(in-repo) Tests green.** `npm test` passes. Owner: any developer.
+4. **(in-repo) Schema green.** `npm run schema:check:strict` passes. Owner: the engineer who touched a migration.
+5. **(in-repo) Tenant audit green.** `npm run audit:tenant:strict` passes — no service-role query touches a tenant-scoped table without an explicit `school_id` filter. Owner: the engineer who touched a server file.
+6. **(in-repo) Security tests green.** `npm run test:security` passes. Owner: any developer.
+7. **(out-of-repo) Load test green.** The most recent `npm run load:test:tier2` run is below the thresholds in [OPERATIONS.md](./OPERATIONS.md#load-testing). Owner: ops.
+8. **(out-of-repo) DR drill green.** A successful drill in the last 90 days. Owner: ops.
 
 ## Sign-off
 
 You record sign-off in the release thread. The sign-off template:
 
 - Release version, target branch, commit SHA.
-- Build, lint, tests, schema, tenant audit: green.
-- Load test tier and result.
-- DR drill date.
+- Build, lint, tests, schema, tenant audit, security tests: green (in-repo, automated by CI).
+- Load-test tier2, DR drill: green (out-of-repo, manually verified).
 - Risks and mitigations.
 - Rollback plan.
 
@@ -43,8 +43,8 @@ You should not roll forward to fix a regression. Revert, ship the revert, and re
 You ship:
 
 - The Next.js standalone build (see `scripts/prepare-standalone.mjs`).
-- The gateway worker (if it changed) via `wrangler deploy`.
-- New migrations, applied in order against the production database.
+- The gateway worker (if it changed) via `npx wrangler deploy` from `workers/gateway/`.
+- New migrations, applied in order against the production database (see [`scripts/apply-migrations.mjs`](./../scripts/apply-migrations.mjs)).
 
 You do not ship:
 
@@ -64,4 +64,4 @@ You should set alerts at thresholds, not on raw errors. A 0.1% error rate during
 
 ## After a release
 
-You watch for 30 minutes. If the metrics stay green, you close the release thread. If they regress, you revert. The post-mortem, if any, goes into the team's incident log under `docs/_archive/operations/incident-log.md`.
+You watch for 30 minutes. If the metrics stay green, you close the release thread. If they regress, you revert. The post-mortem, if any, goes into the team's incident log (live in the team wiki).

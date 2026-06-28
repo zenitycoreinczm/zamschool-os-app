@@ -21,17 +21,19 @@ type StudentTotals = {
 export default function CountChart() {
   const router = useRouter();
   const dashboard = useDashboardSummary();
-  const [fallbackTotals, setFallbackTotals] = useState<StudentTotals | null>(null);
+  const [fallbackTotals, setFallbackTotals] = useState<StudentTotals | null>(
+    null,
+  );
   const summaryTotals = dashboard?.summary?.studentTotals ?? null;
-  const totals =
-    summaryTotals ??
+  const totals = summaryTotals ??
     fallbackTotals ?? {
       total: 0,
       boys: 0,
       girls: 0,
       unspecified: 0,
     };
-  const loading = !summaryTotals && !fallbackTotals && (dashboard?.loading ?? true);
+  const loading =
+    !summaryTotals && !fallbackTotals && (dashboard?.loading ?? true);
 
   useEffect(() => {
     if (summaryTotals || dashboard?.loading) {
@@ -61,23 +63,31 @@ export default function CountChart() {
 
   const inferredBoys = totals.boys + Math.ceil(totals.unspecified / 2);
   const inferredGirls = totals.girls + Math.floor(totals.unspecified / 2);
-  const displayBoys = totals.total > 0 && totals.boys + totals.girls === 0 ? inferredBoys : totals.boys;
-  const displayGirls = totals.total > 0 && totals.boys + totals.girls === 0 ? inferredGirls : totals.girls;
+  const displayBoys =
+    totals.total > 0 && totals.boys + totals.girls === 0
+      ? inferredBoys
+      : totals.boys;
+  const displayGirls =
+    totals.total > 0 && totals.boys + totals.girls === 0
+      ? inferredGirls
+      : totals.girls;
   const displayTotal = displayBoys + displayGirls;
-  const boysRate = displayTotal > 0 ? Math.round((displayBoys / displayTotal) * 100) : 0;
-  const girlsRate = displayTotal > 0 ? Math.round((displayGirls / displayTotal) * 100) : 0;
+  const boysRate =
+    displayTotal > 0 ? Math.round((displayBoys / displayTotal) * 100) : 0;
+  const girlsRate =
+    displayTotal > 0 ? Math.round((displayGirls / displayTotal) * 100) : 0;
   const chartData = useMemo(
     () => [
       { name: "Girls", count: displayGirls, fill: "#FAE27C" },
       { name: "Boys", count: displayBoys, fill: "#C3EBFA" },
     ],
-    [displayBoys, displayGirls]
+    [displayBoys, displayGirls],
   );
 
   return (
-    <div className="bg-white rounded-[22px] w-full h-full min-h-[390px] p-5 flex flex-col shadow-sm border border-slate-100">
+    <div className="bg-white rounded-workspace-xl w-full h-full min-h-[390px] p-5 flex flex-col shadow-sm border border-slate-100">
       <div className="flex justify-between items-center">
-        <h1 className="text-[2rem] font-bold text-slate-900">Students</h1>
+        <h2 className="text-lg font-semibold text-slate-900">Students</h2>
         <button
           type="button"
           onClick={() => router.push("/app/admin/users")}
@@ -95,8 +105,12 @@ export default function CountChart() {
         ) : totals.total === 0 ? (
           <div className="grid h-[280px] place-items-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center">
             <div>
-              <p className="text-sm font-medium text-slate-600">No students yet</p>
-              <p className="mt-1 text-xs text-slate-400">Student totals will appear here after enrolment data is added.</p>
+              <p className="text-sm font-medium text-slate-600">
+                No students yet
+              </p>
+              <p className="mt-1 text-xs text-slate-400">
+                Student totals will appear here after enrolment data is added.
+              </p>
             </div>
           </div>
         ) : (
@@ -129,13 +143,21 @@ export default function CountChart() {
       <div className="grid grid-cols-2 gap-3 pt-3">
         <div className="min-w-0 rounded-2xl bg-sky-50/70 px-3 py-3">
           <div className="w-4 h-4 bg-[#bde9fb] rounded-full" />
-          <h1 className="text-[2rem] leading-none font-bold text-slate-900">{displayBoys}</h1>
-          <h2 className="text-sm leading-snug font-medium text-slate-500">Boys ({boysRate}%)</h2>
+          <p className="text-[2rem] leading-none font-bold text-slate-900">
+            {displayBoys}
+          </p>
+          <h2 className="text-sm leading-snug font-medium text-slate-500">
+            Boys ({boysRate}%)
+          </h2>
         </div>
         <div className="min-w-0 rounded-2xl bg-amber-50/70 px-3 py-3">
           <div className="w-4 h-4 bg-[#f9d86d] rounded-full" />
-          <h1 className="text-[2rem] leading-none font-bold text-slate-900">{displayGirls}</h1>
-          <h2 className="text-sm leading-snug font-medium text-slate-500">Girls ({girlsRate}%)</h2>
+          <p className="text-[2rem] leading-none font-bold text-slate-900">
+            {displayGirls}
+          </p>
+          <h2 className="text-sm leading-snug font-medium text-slate-500">
+            Girls ({girlsRate}%)
+          </h2>
         </div>
       </div>
       {totals.unspecified > 0 ? (

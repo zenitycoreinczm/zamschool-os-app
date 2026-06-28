@@ -1,12 +1,18 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { z } from "zod";
-import { applyRateLimit, getClientIp, parseJsonWithSchema, safeErrorMessage } from "@/lib/server-guards";
+import {
+  applyRateLimit,
+  getClientIp,
+  parseJsonWithSchema,
+  safeErrorMessage,
+} from "@/lib/server-guards";
 import {
   requireFinancialReadContext,
   requireFinancialWriteContext,
 } from "@/lib/server-auth";
 import { requireFeatureAccess } from "@/lib/feature-permissions";
+import { assertDomainAccess } from "@/lib/domain-ownership";
 import { createAuditLog } from "@/lib/audit-log";
 
 const createFinanceRecordSchema = z.object({
@@ -47,10 +53,12 @@ export async function GET(req: Request) {
 
     let query = supabaseAdmin
       .from("finance_records")
-      .select(`
+      .select(
+        `
         *,
         profiles:recorded_by(first_name, last_name, email)
-      `)
+      `,
+      )
       .eq("school_id", schoolId);
 
     if (transactionType) {
@@ -69,7 +77,9 @@ export async function GET(req: Request) {
       query = query.lte("transaction_date", endDate);
     }
 
-    const { data, error } = await query.order("transaction_date", { ascending: false });
+    const { data, error } = await query.order("transaction_date", {
+      ascending: false,
+    });
 
     if (error) throw error;
 
@@ -93,7 +103,10 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ success: true, data, summary });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to fetch finance records") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to fetch finance records") },
+      { status: 500 },
+    );
   }
 }
 
@@ -101,8 +114,20 @@ export async function POST(req: Request) {
   try {
     const access = await requireFinancialWriteContext(req);
     if (!access.ok) return access.response;
-    const perm = await requireFeatureAccess(access.context, "finance", "create");
+    const perm = await requireFeatureAccess(
+      access.context,
+      "finance",
+      "create",
+    );
     if (!perm.ok) return perm.response;
+    const domain = assertDomainAccess({
+      domain: "finance",
+      role: access.context.role,
+      action: "create",
+    });
+    if (!domain.ok) {
+      return NextResponse.json({ error: domain.error }, { status: 403 });
+    }
     const { schoolId, userId } = access.context;
     const ip = getClientIp(req);
     const rate = await applyRateLimit({
@@ -113,7 +138,7 @@ export async function POST(req: Request) {
     if (!rate.allowed) {
       return NextResponse.json(
         { error: "Too many requests. Please try again shortly." },
-        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } }
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
       );
     }
 
@@ -140,9 +165,22 @@ export async function POST(req: Request) {
 
     if (error) throw error;
 
+    await createAuditLog({
+      schoolId,
+      userId,
+      action: "finance.create",
+      entityType: "finance_record",
+      entityId: data.id,
+      newData: data,
+      ipAddress: ip,
+    });
+
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to create finance record") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to create finance record") },
+      { status: 500 },
+    );
   }
 }
 
@@ -150,9 +188,21 @@ export async function PUT(req: Request) {
   try {
     const access = await requireFinancialWriteContext(req);
     if (!access.ok) return access.response;
-    const perm = await requireFeatureAccess(access.context, "finance", "update");
+    const perm = await requireFeatureAccess(
+      access.context,
+      "finance",
+      "update",
+    );
     if (!perm.ok) return perm.response;
-    const { schoolId } = access.context;
+    const domain = assertDomainAccess({
+      domain: "finance",
+      role: access.context.role,
+      action: "update",
+    });
+    if (!domain.ok) {
+      return NextResponse.json({ error: domain.error }, { status: 403 });
+    }
+    const { schoolId, userId } = access.context;
     const ip = getClientIp(req);
     const rate = await applyRateLimit({
       key: `admin-finance:${ip}`,
@@ -162,20 +212,38 @@ export async function PUT(req: Request) {
     if (!rate.allowed) {
       return NextResponse.json(
         { error: "Too many requests. Please try again shortly." },
-        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } }
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
       );
     }
 
     const body = await parseJsonWithSchema(req, updateFinanceRecordSchema);
+    const { data: existingRecord, error: existingError } = await supabaseAdmin
+      .from("finance_records")
+      .select("*")
+      .eq("id", body.id)
+      .eq("school_id", schoolId)
+      .maybeSingle();
+
+    if (existingError) throw existingError;
+    if (!existingRecord) {
+      return NextResponse.json(
+        { error: "Finance record not found" },
+        { status: 404 },
+      );
+    }
 
     const payload: Record<string, any> = {};
     if (body.transactionType) payload.transaction_type = body.transactionType;
-    if (body.category !== undefined) payload.category = body.category?.trim() || null;
+    if (body.category !== undefined)
+      payload.category = body.category?.trim() || null;
     if (body.amount !== undefined) payload.amount = body.amount;
     if (body.currency) payload.currency = body.currency;
-    if (body.description !== undefined) payload.description = body.description?.trim() || null;
-    if (body.paymentMethod !== undefined) payload.payment_method = body.paymentMethod?.trim() || null;
-    if (body.referenceNumber !== undefined) payload.reference_number = body.referenceNumber?.trim() || null;
+    if (body.description !== undefined)
+      payload.description = body.description?.trim() || null;
+    if (body.paymentMethod !== undefined)
+      payload.payment_method = body.paymentMethod?.trim() || null;
+    if (body.referenceNumber !== undefined)
+      payload.reference_number = body.referenceNumber?.trim() || null;
     if (body.transactionDate) payload.transaction_date = body.transactionDate;
 
     const { data, error } = await supabaseAdmin
@@ -188,9 +256,23 @@ export async function PUT(req: Request) {
 
     if (error) throw error;
 
+    await createAuditLog({
+      schoolId,
+      userId,
+      action: "finance.update",
+      entityType: "finance_record",
+      entityId: body.id,
+      oldData: existingRecord,
+      newData: data,
+      ipAddress: ip,
+    });
+
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to update finance record") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to update finance record") },
+      { status: 500 },
+    );
   }
 }
 
@@ -198,14 +280,44 @@ export async function DELETE(req: Request) {
   try {
     const access = await requireFinancialWriteContext(req);
     if (!access.ok) return access.response;
-    const perm = await requireFeatureAccess(access.context, "finance", "delete");
+    const perm = await requireFeatureAccess(
+      access.context,
+      "finance",
+      "delete",
+    );
     if (!perm.ok) return perm.response;
-    const { schoolId } = access.context;
+    const domain = assertDomainAccess({
+      domain: "finance",
+      role: access.context.role,
+      action: "delete",
+    });
+    if (!domain.ok) {
+      return NextResponse.json({ error: domain.error }, { status: 403 });
+    }
+    const { schoolId, userId } = access.context;
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 
     if (!id) {
-      return NextResponse.json({ error: "Finance record ID is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Finance record ID is required" },
+        { status: 400 },
+      );
+    }
+
+    const { data: existingRecord, error: existingError } = await supabaseAdmin
+      .from("finance_records")
+      .select("*")
+      .eq("id", id)
+      .eq("school_id", schoolId)
+      .maybeSingle();
+
+    if (existingError) throw existingError;
+    if (!existingRecord) {
+      return NextResponse.json(
+        { error: "Finance record not found" },
+        { status: 404 },
+      );
     }
 
     const { error } = await supabaseAdmin
@@ -216,8 +328,21 @@ export async function DELETE(req: Request) {
 
     if (error) throw error;
 
+    await createAuditLog({
+      schoolId,
+      userId,
+      action: "finance.delete",
+      entityType: "finance_record",
+      entityId: id,
+      oldData: existingRecord,
+      ipAddress: getClientIp(req),
+    });
+
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to delete finance record") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to delete finance record") },
+      { status: 500 },
+    );
   }
 }

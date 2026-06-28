@@ -11,6 +11,8 @@ import {
 } from "@/lib/admin-route-client";
 import { getClientUser } from "@/lib/supabase-auth-client";
 import { normalizeRole } from "@/lib/roles";
+import { Surface } from "@/components/workspace/Surface";
+import { cn } from "@/lib/utils";
 
 type FinanceEntry = {
   id: string;
@@ -164,10 +166,16 @@ export default function AdminFinancePage() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-10 flex items-center justify-center gap-3">
-        <Loader2 className="w-5 h-5 animate-spin text-sky-600" />
-        <span className="text-sm text-slate-500">Loading finance module...</span>
-      </div>
+      <Surface
+        variant="default"
+        role="status"
+        aria-live="polite"
+        className="flex items-center justify-center gap-3 p-10 text-sm text-slate-500"
+        as="div"
+      >
+        <Loader2 className="h-5 w-5 animate-spin text-sky-600" />
+        <span>Loading finance module...</span>
+      </Surface>
     );
   }
 
@@ -185,7 +193,7 @@ export default function AdminFinancePage() {
       </div>
 
       {canWriteFinance ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+        <Surface variant="default" className="space-y-3 p-4" as="div">
           <div className="grid md:grid-cols-5 gap-3">
             <select
               value={form.type}
@@ -222,19 +230,20 @@ export default function AdminFinancePage() {
             />
           </div>
           <button
+            type="button"
             onClick={addEntry}
             disabled={saving}
-            className="inline-flex items-center gap-2 rounded-xl bg-sky-500 text-white px-4 py-2.5 text-sm font-semibold hover:bg-sky-400 disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-sky-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 disabled:opacity-60"
           >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             Add Entry
           </button>
-        </div>
+        </Surface>
       ) : null}
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+      <Surface variant="default" className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between" as="div">
         <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 min-w-[280px]">
-          <Search className="w-4 h-4 text-slate-400" />
+          <Search className="h-4 w-4 text-slate-400" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -243,29 +252,33 @@ export default function AdminFinancePage() {
           />
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" role="group" aria-label="Filter by type">
           {(["all", "income", "expense"] as const).map((t) => (
             <button
               key={t}
+              type="button"
               onClick={() => setTypeFilter(t)}
-              className={`px-3 py-2 rounded-lg text-xs font-medium capitalize ${
-                typeFilter === t ? "bg-sky-500 text-white" : "bg-slate-100 text-slate-600"
-              }`}
+              aria-pressed={typeFilter === t}
+              className={cn(
+                "rounded-lg px-3 py-2 text-xs font-medium capitalize transition",
+                typeFilter === t ? "bg-sky-500 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              )}
             >
               {t}
             </button>
           ))}
           <button
+            type="button"
             onClick={exportCsv}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200"
           >
-            <Download className="w-3.5 h-3.5" />
+            <Download className="h-3.5 w-3.5" />
             Export CSV
           </button>
         </div>
-      </div>
+      </Surface>
 
-      <div className="rounded-2xl border border-slate-200 bg-white overflow-x-auto">
+      <Surface variant="default" className="overflow-x-auto p-0" as="div">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-slate-600">
             <tr>
@@ -308,17 +321,17 @@ export default function AdminFinancePage() {
             )}
           </tbody>
         </table>
-      </div>
+      </Surface>
     </div>
   );
 }
 
 function Card({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+    <Surface variant="default" className="p-4" as="div">
       <p className="text-xs text-slate-500">{label}</p>
-      <p className="text-2xl font-semibold text-slate-900 mt-1">{value}</p>
-    </div>
+      <p className="mt-1 text-2xl font-semibold text-slate-900">{value}</p>
+    </Surface>
   );
 }
 

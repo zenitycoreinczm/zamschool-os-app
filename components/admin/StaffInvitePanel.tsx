@@ -2,11 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Check,
   ChevronDown,
   ChevronUp,
+  Copy,
+  KeyRound,
   Loader2,
   Mail,
   ShieldCheck,
+  UserCheck,
   UserPlus,
   X,
 } from "lucide-react";
@@ -55,7 +59,8 @@ const EMPTY_FORM: InviteForm = {
 type IssuedInvite = {
   email: string;
   role: string;
-  acceptUrl?: string;
+  temporaryPassword?: string;
+  credentialsEmailSent?: boolean;
 };
 
 type StaffInvitePanelProps = {
@@ -86,6 +91,7 @@ export function StaffInvitePanel({
   const [invitations, setInvitations] = useState<InvitationRow[]>([]);
   const [form, setForm] = useState<InviteForm>(EMPTY_FORM);
   const [issued, setIssued] = useState<IssuedInvite | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const selectedRoleHint = useMemo(
     () =>
@@ -146,7 +152,12 @@ export function StaffInvitePanel({
     setSubmitting(true);
     try {
       const body = await adminApiJson<{
-        data?: { email?: string; role?: string; accept_url?: string };
+        data?: {
+          email?: string;
+          role?: string;
+          temporary_password?: string;
+          credentials_email_sent?: boolean;
+        };
       }>("/api/staff/invitations", {
         method: "POST",
         body: JSON.stringify({
@@ -157,26 +168,36 @@ export function StaffInvitePanel({
           role: form.role,
           department: form.department.trim() || undefined,
           position: form.position.trim() || undefined,
+          send_email: false,
         }),
       });
 
       setIssued({
         email: body.data?.email || email,
         role: body.data?.role || form.role,
-        acceptUrl: body.data?.accept_url,
+        temporaryPassword: body.data?.temporary_password,
+        credentialsEmailSent: body.data?.credentials_email_sent === true,
       });
       setShowForm(false);
       setForm(EMPTY_FORM);
-      toast.success(
-        "Invitation sent — sign-in details will be emailed to the new staff member",
-      );
+      toast.success("Staff account created — share the temporary password below.");
       await loadInvitations();
     } catch (err: unknown) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to send invitation",
+        err instanceof Error ? err.message : "Failed to create staff account",
       );
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function copyToClipboard(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Could not copy to clipboard — select and copy manually.");
     }
   }
 
@@ -214,8 +235,9 @@ export function StaffInvitePanel({
           </h2>
           <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-workspace-muted">
             Create Deputy Head, Bursar, School Administrator, ICT, HR, and other
-            office logins. Each person receives sign-in credentials via email
-            and must change their password on first login. For{" "}
+            office logins instantly. Each person gets a temporary password —
+            share it in person or by phone. They will sign in and change it on
+            first login. For{" "}
             <strong className="font-semibold text-slate-700">students</strong>,{" "}
             <strong className="font-semibold text-slate-700">parents</strong>,
             and classroom{" "}
@@ -273,22 +295,61 @@ export function StaffInvitePanel({
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex items-start gap-3">
                   <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
-                    <Mail className="h-4 w-4" />
+                    <UserCheck className="h-4 w-4" />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-sm font-semibold text-emerald-900">
-                      Invitation sent
+                      Staff account created
                     </p>
                     <p className="mt-1 text-sm leading-relaxed text-emerald-800">
-                      Sign-in details have been emailed to{" "}
                       <span className="font-semibold">
                         {getStaffInviteRoleLabel(issued.role)}
                       </span>{" "}
+                      account is ready for{" "}
                       <span className="font-semibold">{issued.email}</span>.
-                      They will sign in at{" "}
-                      <span className="font-semibold">/login</span> and must
-                      change their password on first login.
+                      {issued.credentialsEmailSent
+                        ? " Credentials have been emailed."
+                        : " Share the temporary password below — they will change it on first login."}
                     </p>
+
+                    {issued.temporaryPassword && (
+                      <div className="mt-3 rounded-workspace-md border border-emerald-300 bg-white px-4 py-3">
+                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                          <KeyRound className="h-3.5 w-3.5" />
+                          Temporary password
+                        </div>
+                        <div className="mt-1.5 flex items-center gap-3">
+                          <code className="select-all font-mono text-base font-bold text-slate-900">
+                            {issued.temporaryPassword}
+                          </code>
+                          <button
+                            type="button"
+                            onClick={() => void copyToClipboard(issued.temporaryPassword!)}
+                            className="inline-flex items-center gap-1.5 rounded-workspace-md border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 active:scale-[0.98]"
+                          >
+                            {copied ? (
+                              <>
+                                <Check className="h-3.5 w-3.5" />
+                                Copied
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="h-3.5 w-3.5" />
+                                Copy
+                              </>
+                            )}
+                          </button>
+                        </div>
+                        <p className="mt-2 text-xs text-slate-500">
+                          Sign in at{" "}
+                          <span className="font-semibold text-slate-700">
+                            /login
+                          </span>{" "}
+                          with this email and password, then choose a new
+                          password to activate the account.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <button
@@ -486,7 +547,7 @@ export function StaffInvitePanel({
                   ) : (
                     <UserPlus className="h-4 w-4" />
                   )}
-                  Send invitation
+                  Create staff account
                 </button>
 
                 <button
@@ -526,14 +587,18 @@ export function StaffInvitePanel({
             ) : invitations.length === 0 ? (
               <div className="flex flex-col items-center gap-3 rounded-workspace-lg border border-dashed border-workspace-border px-5 py-10 text-center">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-                  <Mail className="h-5 w-5" />
+                  <UserPlus className="h-5 w-5" />
                 </div>
                 <p className="max-w-sm text-sm text-workspace-muted">
-                  No pending invitations. Use{" "}
+                  No staff accounts yet. Use{" "}
                   <span className="font-semibold text-slate-600">
                     Invite School Administrator
                   </span>{" "}
-                  when you need office staff on the administrator dashboard.
+                  or{" "}
+                  <span className="font-semibold text-slate-600">
+                    Invite other staff
+                  </span>{" "}
+                  to create accounts for your office team.
                 </p>
               </div>
             ) : (

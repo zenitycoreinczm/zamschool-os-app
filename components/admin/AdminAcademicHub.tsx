@@ -76,7 +76,7 @@ export function AdminAcademicHub() {
         setLoading(false);
       }
     })();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   const loadData = async () => {
     const [yearsBody, termsBody] = await Promise.all([

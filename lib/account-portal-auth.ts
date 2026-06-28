@@ -1,18 +1,28 @@
 import { NextResponse } from "next/server";
 
 import { fetchProfileByIdentity } from "@/lib/profile-lookup";
-import { getCachedActorSnapshot, setCachedActorSnapshot } from "@/lib/redis-role-cache";
-import { resolveVerifiedBearerUser } from "@/lib/supabase-auth-verify";
+import {
+  getCachedActorSnapshot,
+  setCachedActorSnapshot,
+} from "@/lib/redis/role-cache";
+import {
+  resolveVerifiedAuthUser,
+  resolveVerifiedBearerUser,
+} from "@/lib/supabase-auth-verify";
 import { normalizeRole } from "@/lib/roles";
 import { supabaseAdmin } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase/server";
 
 export type AccountPortalActor = {
   userId: string;
   schoolId: string;
+  email?: string | null;
+  profileId?: string | null;
 };
 
 export function readBearerToken(req: Request) {
-  const header = req.headers.get("authorization") || req.headers.get("Authorization");
+  const header =
+    req.headers.get("authorization") || req.headers.get("Authorization");
   if (!header) {
     return null;
   }
@@ -26,45 +36,67 @@ export function readBearerToken(req: Request) {
 }
 
 export async function authenticateAccountPortalRequest(
-  req: Request
+  req: Request,
 ): Promise<AccountPortalActor | { response: NextResponse }> {
   const bearerToken = readBearerToken(req);
-  if (bearerToken == null || !bearerToken) {
-    return { response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  const authResult = await resolveAccountPortalUser(bearerToken);
+  if (authResult.error || !authResult.user) {
+    return {
+      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
   }
 
-  const { user, error } = await resolveVerifiedBearerUser(supabaseAdmin.auth, bearerToken);
-  if (error || !user) {
-    return { response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-  }
+  const user = authResult.user;
 
   const cached = await getCachedActorSnapshot(user.id);
+  let profileId = String(cached?.profileId || "").trim() || null;
   let schoolId = String(cached?.schoolId || "").trim();
 
-  if (!schoolId) {
-    const { data: profile, error: profileError } = await fetchProfileByIdentity<{
-      role?: string | null;
-      school_id?: string | null;
-    }>(supabaseAdmin as never, user.id, "role, school_id", user.email);
+  if (!schoolId || !profileId) {
+    const { data: profile, error: profileError } =
+      await fetchProfileByIdentity<{
+        id?: string | null;
+        role?: string | null;
+        school_id?: string | null;
+      }>(supabaseAdmin as never, user.id, "id, role, school_id", user.email);
 
     if (profileError) {
       throw profileError;
     }
 
-    schoolId = String(profile?.school_id || "").trim();
+    profileId = String(profile?.id || "").trim() || profileId;
+    schoolId = String(profile?.school_id || schoolId || "").trim();
     void setCachedActorSnapshot(user.id, {
-      role: normalizeRole(profile?.role),
+      role: normalizeRole(profile?.role ?? cached?.role),
       schoolId: schoolId || null,
+      profileId,
     });
   }
   if (!schoolId) {
     return {
-      response: NextResponse.json({ error: "No school linked to this account" }, { status: 403 }),
+      response: NextResponse.json(
+        { error: "No school linked to this account" },
+        { status: 403 },
+      ),
     };
   }
 
   return {
     userId: user.id,
     schoolId,
+    email: user.email ?? null,
+    profileId,
   };
+}
+
+async function resolveAccountPortalUser(bearerToken: string | null) {
+  if (bearerToken !== null) {
+    if (!bearerToken) {
+      return { user: null, error: new Error("Invalid authorization header") };
+    }
+    return resolveVerifiedBearerUser(supabaseAdmin.auth, bearerToken);
+  }
+
+  const supabase = await createClient();
+  return resolveVerifiedAuthUser(supabase);
 }

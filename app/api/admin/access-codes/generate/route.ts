@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireSuperAdminContext } from "@/lib/server-auth";
-import { applyRateLimit, getClientIp, parseJsonWithSchema, safeErrorMessage } from "@/lib/server-guards";
+import { createAuditLog } from "@/lib/audit-log";
+import {
+  applyRateLimit,
+  getClientIp,
+  parseJsonWithSchema,
+  safeErrorMessage,
+} from "@/lib/server-guards";
 import { supabaseAdmin } from "@/lib/supabase";
 import { randomBytes } from "crypto";
 
@@ -36,7 +42,9 @@ export async function POST(req: Request) {
     });
     if (!rate.allowed) {
       return NextResponse.json(
-        { error: "Too many requests. Please wait before generating more codes." },
+        {
+          error: "Too many requests. Please wait before generating more codes.",
+        },
         { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
       );
     }
@@ -68,7 +76,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { error } = await supabaseAdmin.from("access_codes").insert({
+    const { error, data } = await supabaseAdmin.from("access_codes").insert({
       code,
       created_by: access.context.userId,
       max_uses: params.maxUses,
@@ -89,6 +97,20 @@ export async function POST(req: Request) {
       );
     }
 
+    await createAuditLog({
+      schoolId: null,
+      userId: access.context.userId,
+      action: "access_code.generated",
+      entityType: "access_code",
+      entityId: code,
+      newData: {
+        code,
+        expiresAt: expiresAt.toISOString(),
+        params: { ...params },
+      },
+      ipAddress: ip,
+    });
+
     return NextResponse.json({
       success: true,
       data: {
@@ -98,7 +120,10 @@ export async function POST(req: Request) {
       },
     });
   } catch (err: unknown) {
-    console.error("[generate-access-code] Error:", safeErrorMessage(err, "Unknown error"));
+    console.error(
+      "[generate-access-code] Error:",
+      safeErrorMessage(err, "Unknown error"),
+    );
     return NextResponse.json(
       { error: safeErrorMessage(err, "Failed to generate access code.") },
       { status: 500 },

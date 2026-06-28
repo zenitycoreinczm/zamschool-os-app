@@ -76,10 +76,24 @@ export async function processSyncQueue(): Promise<{ processed: number; failed: n
 
   for (const item of queue) {
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      // Inject CSRF token from cookie for mutating requests
+      const csrfMatch = document.cookie
+        .split(";")
+        .map((c) => c.trim())
+        .find((c) => c.startsWith("csrf-token="));
+      if (csrfMatch) {
+        headers["X-CSRF-Token"] = csrfMatch.split("=")[1] || "";
+      }
+
       const response = await fetch(item.endpoint, {
         method: item.method,
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(item.body),
+        credentials: "same-origin",
       });
 
       if (response.ok) {

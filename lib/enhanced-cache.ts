@@ -26,23 +26,29 @@ export interface CacheConfig {
 
 export const CACHE_CONFIGS = {
   parent: {
-    dashboard: { ttlSeconds: 60, staleWhileRevalidate: 300 },
+    dashboard: { ttlSeconds: 45, staleWhileRevalidate: 120 },
     attendance: { ttlSeconds: 120, staleWhileRevalidate: 600 },
     progress: { ttlSeconds: 300, staleWhileRevalidate: 900 },
     fees: { ttlSeconds: 300, staleWhileRevalidate: 900 },
     children: { ttlSeconds: 600, staleWhileRevalidate: 1800 },
   },
   teacher: {
+    bootstrap: { ttlSeconds: 30, staleWhileRevalidate: 120 },
+    dashboard: { ttlSeconds: 30, staleWhileRevalidate: 120 },
     classes: { ttlSeconds: 300, staleWhileRevalidate: 900 },
     assignments: { ttlSeconds: 120, staleWhileRevalidate: 600 },
     attendance: { ttlSeconds: 60, staleWhileRevalidate: 300 },
     students: { ttlSeconds: 300, staleWhileRevalidate: 900 },
+  },
+  student: {
+    dashboard: { ttlSeconds: 30, staleWhileRevalidate: 120 },
   },
   admin: {
     users: { ttlSeconds: 60, staleWhileRevalidate: 300 },
     analytics: { ttlSeconds: 300, staleWhileRevalidate: 900 },
     reports: { ttlSeconds: 600, staleWhileRevalidate: 1800 },
     settings: { ttlSeconds: 600, staleWhileRevalidate: 1800 },
+    classes: { ttlSeconds: 20, staleWhileRevalidate: 120 },
   },
   shared: {
     announcements: { ttlSeconds: 60, staleWhileRevalidate: 300 },
@@ -96,6 +102,8 @@ function cacheClearPattern(pattern: string): void {
 /**
  * In-memory cache with stale-while-revalidate. Safe for server and client bundles.
  */
+const inflightRequests = new Map<string, Promise<unknown>>();
+
 export async function withCache<T>(
   key: string,
   fetchFn: () => Promise<T>,
@@ -127,9 +135,22 @@ export async function withCache<T>(
       if (recheck) return recheck.data;
     }
 
-    const data = await fetchFn();
-    cacheSet(cacheKey, { data, timestamp: Date.now() } satisfies CacheEntry<T>, config.ttlSeconds + (config.staleWhileRevalidate || 0));
-    return data;
+    const inflight = inflightRequests.get(cacheKey);
+    if (inflight) {
+      return inflight as Promise<T>;
+    }
+
+    const fetchPromise = fetchFn().then((data) => {
+      cacheSet(cacheKey, { data, timestamp: Date.now() } satisfies CacheEntry<T>, config.ttlSeconds + (config.staleWhileRevalidate || 0));
+      inflightRequests.delete(cacheKey);
+      return data;
+    }).catch((error) => {
+      inflightRequests.delete(cacheKey);
+      throw error;
+    });
+
+    inflightRequests.set(cacheKey, fetchPromise);
+    return fetchPromise;
   } catch (error) {
     console.error("[Cache] Error:", error);
     return fetchFn();

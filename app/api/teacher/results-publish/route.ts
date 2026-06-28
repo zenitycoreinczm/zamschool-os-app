@@ -5,9 +5,14 @@ import { invalidatePublishedResultsCache } from "@/lib/published-results-read";
 import { buildExamCertificateNotificationPayloads } from "@/lib/result-notifications";
 import { loadTeacherAssignmentScope } from "@/lib/teacher-assignment-scope-server";
 import { requireTeacherContext } from "@/lib/server-auth";
-import { parseJsonWithSchema, safeErrorMessage, applyRateLimit } from "@/lib/server-guards";
+import {
+  parseJsonWithSchema,
+  safeErrorMessage,
+  applyRateLimit,
+} from "@/lib/server-guards";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { auditDomainWrite } from "@/lib/audit-domain";
+import { authorizeWorkflowTransition } from "@/lib/workflow-states";
 import { refreshSchoolReadModels } from "@/lib/read-model-refresh";
 import { getClientIp } from "@/lib/server-guards";
 
@@ -25,7 +30,7 @@ const publishSchema = z
       (value.examTitle && value.classId),
     {
       message: "assignmentId, resultIds, or examTitle+classId is required",
-    }
+    },
   );
 
 export async function POST(req: Request) {
@@ -37,7 +42,7 @@ export async function POST(req: Request) {
     if (!schoolId) {
       return NextResponse.json(
         { error: "No school linked to this account" },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
@@ -54,7 +59,7 @@ export async function POST(req: Request) {
         {
           status: 429,
           headers: { "Retry-After": String(rate.retryAfterSec) },
-        }
+        },
       );
     }
 
@@ -68,7 +73,10 @@ export async function POST(req: Request) {
       assignmentScope.actorTeacherIds.length === 0 ||
       assignmentScope.allowedClassIds.length === 0
     ) {
-      return NextResponse.json({ error: "No assigned result scope found" }, { status: 403 });
+      return NextResponse.json(
+        { error: "No assigned result scope found" },
+        { status: 403 },
+      );
     }
 
     const supabaseAdmin = getSupabaseAdmin();
@@ -86,7 +94,7 @@ export async function POST(req: Request) {
             subject_id,
             teacher_id
           )
-        `
+        `,
       )
       .eq("school_id", schoolId);
 
@@ -102,7 +110,7 @@ export async function POST(req: Request) {
       if (examAssignmentIds.length === 0) {
         return NextResponse.json(
           { error: "No assignments found for this exam and class" },
-          { status: 404 }
+          { status: 404 },
         );
       }
       query = query.in("assignment_id", examAssignmentIds);
@@ -125,17 +133,26 @@ export async function POST(req: Request) {
     });
 
     if (scopedResults.length === 0) {
-      return NextResponse.json({ error: "No publishable results found in assigned scope" }, { status: 404 });
+      return NextResponse.json(
+        { error: "No publishable results found in assigned scope" },
+        { status: 404 },
+      );
     }
 
     const publishedAt = new Date().toISOString();
     const resultIds = scopedResults.map((row: any) => row.id);
 
+    // Teachers can only submit results for moderation, not publish directly.
+    // The grading workflow is: draft → submitted → moderated → approved → published
+    // Teachers move results to 'submitted'. Publishing requires admin approval.
+    const newGradingStatus = "submitted";
+
     const { error: publishError } = await supabaseAdmin
       .from("results")
       .update({
-        published_at: publishedAt,
-        published_by: userId,
+        grading_status: newGradingStatus,
+        submitted_at: publishedAt,
+        submitted_by: userId,
       })
       .in("id", resultIds)
       .eq("school_id", schoolId);
@@ -154,31 +171,33 @@ export async function POST(req: Request) {
     await auditDomainWrite({
       schoolId,
       userId,
-      action: "results.published",
+      action: "results.submitted",
       entityType: "results",
-      newData: { publishedCount: resultIds.length, publishedAt },
+      newData: { submittedCount: resultIds.length, submittedAt: publishedAt },
       ipAddress: getClientIp(req),
     });
 
     return NextResponse.json({
       success: true,
       data: {
-        publishedCount: resultIds.length,
-        publishedAt,
+        submittedCount: resultIds.length,
+        submittedAt: publishedAt,
         resultIds,
+        message:
+          "Results submitted for moderation. An Academic Admin will review and forward for approval.",
       },
     });
   } catch (error: unknown) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: "Validation failed", details: error.issues },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     return NextResponse.json(
       { error: safeErrorMessage(error, "Failed to publish results") },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -191,14 +210,17 @@ async function syncResultNotifications(input: {
 }) {
   const supabaseAdmin = getSupabaseAdmin();
   const studentIds = Array.from(
-    new Set(input.rows.map((row) => row.student_id).filter(Boolean))
+    new Set(input.rows.map((row) => row.student_id).filter(Boolean)),
   );
 
-  const groupedByStudent = new Map<string, {
-    studentId: string;
-    examTitle: string;
-    subjectCount: number;
-  }>();
+  const groupedByStudent = new Map<
+    string,
+    {
+      studentId: string;
+      examTitle: string;
+      subjectCount: number;
+    }
+  >();
 
   for (const row of input.rows) {
     const assignment = normalizeRelation(row.assignments);
@@ -215,26 +237,23 @@ async function syncResultNotifications(input: {
     groupedByStudent.get(key)!.subjectCount++;
   }
 
-  const [
-    teacherProfileResult,
-    studentRowsResult,
-    parentLinksResult,
-  ] = await Promise.all([
-    supabaseAdmin
-      .from("profiles")
-      .select("id, first_name, last_name, email")
-      .eq("id", input.teacherId)
-      .maybeSingle(),
-    supabaseAdmin
-      .from("students")
-      .select("id, profile_id, school_id, class_id")
-      .eq("school_id", input.schoolId)
-      .in("id", studentIds),
-    supabaseAdmin
-      .from("parent_students")
-      .select("parent_id, student_id")
-      .in("student_id", studentIds),
-  ]);
+  const [teacherProfileResult, studentRowsResult, parentLinksResult] =
+    await Promise.all([
+      supabaseAdmin
+        .from("profiles")
+        .select("id, first_name, last_name, email")
+        .eq("id", input.teacherId)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("students")
+        .select("id, profile_id, school_id, class_id")
+        .eq("school_id", input.schoolId)
+        .in("id", studentIds),
+      supabaseAdmin
+        .from("parent_students")
+        .select("parent_id, student_id")
+        .in("student_id", studentIds),
+    ]);
 
   if (teacherProfileResult.error) throw teacherProfileResult.error;
   if (studentRowsResult.error) throw studentRowsResult.error;
@@ -242,43 +261,56 @@ async function syncResultNotifications(input: {
 
   const studentRows = studentRowsResult.data || [];
   const parentLinks = parentLinksResult.data || [];
-  const classIds = Array.from(new Set(studentRows.map((row: any) => row.class_id).filter(Boolean)));
-  const parentIds = Array.from(new Set(parentLinks.map((row: any) => row.parent_id).filter(Boolean)));
-  const studentProfileIds = Array.from(new Set(studentRows.map((row: any) => row.profile_id).filter(Boolean)));
+  const classIds = Array.from(
+    new Set(studentRows.map((row: any) => row.class_id).filter(Boolean)),
+  );
+  const parentIds = Array.from(
+    new Set(parentLinks.map((row: any) => row.parent_id).filter(Boolean)),
+  );
+  const studentProfileIds = Array.from(
+    new Set(studentRows.map((row: any) => row.profile_id).filter(Boolean)),
+  );
 
-  const [studentProfilesResult, parentRowsResult, classesResult] = await Promise.all([
-    studentProfileIds.length > 0
-      ? supabaseAdmin
-          .from("profiles")
-          .select("id, first_name, last_name, email")
-          .in("id", studentProfileIds)
-      : Promise.resolve({ data: [], error: null }),
-    parentIds.length > 0
-      ? supabaseAdmin
-          .from("parents")
-          .select("id, profile_id, school_id")
-          .eq("school_id", input.schoolId)
-          .in("id", parentIds)
-      : Promise.resolve({ data: [], error: null }),
-    classIds.length > 0
-      ? supabaseAdmin
-          .from("classes")
-          .select("id, name")
-          .eq("school_id", input.schoolId)
-          .in("id", classIds)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
+  const [studentProfilesResult, parentRowsResult, classesResult] =
+    await Promise.all([
+      studentProfileIds.length > 0
+        ? supabaseAdmin
+            .from("profiles")
+            .select("id, first_name, last_name, email")
+            .in("id", studentProfileIds)
+        : Promise.resolve({ data: [], error: null }),
+      parentIds.length > 0
+        ? supabaseAdmin
+            .from("parents")
+            .select("id, profile_id, school_id")
+            .eq("school_id", input.schoolId)
+            .in("id", parentIds)
+        : Promise.resolve({ data: [], error: null }),
+      classIds.length > 0
+        ? supabaseAdmin
+            .from("classes")
+            .select("id, name")
+            .eq("school_id", input.schoolId)
+            .in("id", classIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
 
   if (studentProfilesResult.error) throw studentProfilesResult.error;
   if (parentRowsResult.error) throw parentRowsResult.error;
   if (classesResult.error) throw classesResult.error;
 
   const teacherName = buildDisplayName(teacherProfileResult.data, "Teacher");
-  const studentById = new Map((studentRows || []).map((row: any) => [row.id, row]));
-  const studentProfileById = new Map((studentProfilesResult.data || []).map((row: any) => [row.id, row]));
-  const classById = new Map((classesResult.data || []).map((row: any) => [row.id, row]));
+  const studentById = new Map(
+    (studentRows || []).map((row: any) => [row.id, row]),
+  );
+  const studentProfileById = new Map(
+    (studentProfilesResult.data || []).map((row: any) => [row.id, row]),
+  );
+  const classById = new Map(
+    (classesResult.data || []).map((row: any) => [row.id, row]),
+  );
   const parentProfileIdByParentId = new Map(
-    (parentRowsResult.data || []).map((row: any) => [row.id, row.profile_id])
+    (parentRowsResult.data || []).map((row: any) => [row.id, row.profile_id]),
   );
 
   const parentProfileIdsByStudentId = new Map<string, string[]>();
@@ -305,7 +337,8 @@ async function syncResultNotifications(input: {
       : null;
     if (!student?.profile_id || !studentProfile) continue;
 
-    const parentIdsForStudent = parentProfileIdsByStudentId.get(group.studentId) || [];
+    const parentIdsForStudent =
+      parentProfileIdsByStudentId.get(group.studentId) || [];
 
     payloads.push(
       ...buildExamCertificateNotificationPayloads({
@@ -318,7 +351,7 @@ async function syncResultNotifications(input: {
         teacherName,
         publishedAt: input.publishedAt,
         subjectCount: group.subjectCount,
-      })
+      }),
     );
   }
 
@@ -344,7 +377,7 @@ function buildDisplayName(
       }
     | null
     | undefined,
-  fallback: string
+  fallback: string,
 ) {
   return (
     [row?.first_name, row?.last_name].filter(Boolean).join(" ").trim() ||

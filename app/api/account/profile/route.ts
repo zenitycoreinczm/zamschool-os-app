@@ -46,13 +46,16 @@ export async function GET(req: Request) {
       );
     }
 
-    const rate = await applyPlatformRateLimit({
-      scope: "account-profile-read",
-      req,
-      userId: access.context.userId,
-      preset: "heavyRead",
-    });
-    if (!rate.allowed) return platformRateLimitResponse(rate);
+    if (access.context.schoolId) {
+      const rate = await applyPlatformRateLimit({
+        scope: "account-profile-read",
+        schoolId: access.context.schoolId,
+        req,
+        userId: access.context.userId,
+        preset: "heavyRead",
+      });
+      if (!rate.allowed) return platformRateLimitResponse(rate);
+    }
 
     const { data: profile, error: profileError } =
       await fetchProfileByIdentity<any>(

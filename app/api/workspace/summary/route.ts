@@ -35,7 +35,7 @@ export async function GET(req: Request) {
       success: true,
       data: summary,
     });
-    response.headers.set("Cache-Control", EDGE_CACHE.privateRead);
+    response.headers.set("Cache-Control", EDGE_CACHE.noStore);
     return response;
   } catch (error: unknown) {
     return NextResponse.json(

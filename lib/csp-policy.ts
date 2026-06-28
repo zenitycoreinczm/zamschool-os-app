@@ -25,28 +25,33 @@ export function resolveSupabaseConnectOrigin(): string | null {
 }
 
 export function buildContentSecurityPolicy(input: CspBuildInput): string {
-  const scriptSrc = ["'self'", "'unsafe-inline'", "https:"].concat(
+  const scriptSrc = ["'self'", "'unsafe-inline'"].concat(
     input.isProduction ? [] : ["'unsafe-eval'"],
   );
 
-  const styleSrc = ["'self'", "'unsafe-inline'", "https:"];
+  const styleSrc = ["'self'", "'unsafe-inline'"];
 
-  const imgHosts = unique([
+  const supabaseOrigin = input.supabaseOrigin ?? resolveSupabaseConnectOrigin();
+
+  // Explicit allow-list of external origins the app may load from.
+  // Derived from env vars so production only permits the configured backends.
+  const externalHosts = unique([
     parseOrigin(getConfiguredR2PublicUrl()) ?? undefined,
     parseOrigin(getConfiguredClientR2PublicUrl()) ?? undefined,
     parseOrigin(process.env.CDN_BASE_URL),
     parseOrigin(process.env.NEXT_PUBLIC_CDN_BASE_URL),
-    input.supabaseOrigin ?? resolveSupabaseConnectOrigin(),
+    parseOrigin(process.env.NEXT_PUBLIC_GATEWAY_URL),
+    supabaseOrigin,
   ]);
 
-  const imgSrc = unique(["'self'", "data:", "blob:", "https:", ...imgHosts]);
+  const imgSrc = unique(["'self'", "data:", "blob:", ...externalHosts]);
 
-  const connectSrc = unique([
-    "'self'",
-    "https:",
-    "wss:",
-    input.supabaseOrigin ?? resolveSupabaseConnectOrigin(),
-  ]);
+  // Derive websocket equivalents (https → wss, http → ws) for Supabase Realtime.
+  const wsOrigins = externalHosts
+    .filter((h): h is string => Boolean(h))
+    .map((h) => h.replace(/^https:/, "wss:").replace(/^http:/, "ws:"));
+
+  const connectSrc = unique(["'self'", ...externalHosts, ...wsOrigins]);
 
   const directives = [
     "default-src 'self'",

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, Loader2, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { adminApiJson } from "@/lib/admin-browser-api";
+import { Surface } from "@/components/workspace/Surface";
+import { cn } from "@/lib/utils";
 
 type PaymentRow = {
   id: string;
@@ -94,10 +96,16 @@ export default function AdminFeesPage() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-10 flex items-center justify-center gap-3">
-        <Loader2 className="w-5 h-5 animate-spin text-sky-600" />
-        <span className="text-sm text-slate-500">Loading payments...</span>
-      </div>
+      <Surface
+        variant="default"
+        role="status"
+        aria-live="polite"
+        className="flex items-center justify-center gap-3 p-10 text-sm text-slate-500"
+        as="div"
+      >
+        <Loader2 className="h-5 w-5 animate-spin text-sky-600" />
+        <span>Loading payments...</span>
+      </Surface>
     );
   }
 
@@ -114,9 +122,9 @@ export default function AdminFeesPage() {
         <Card label="Total Confirmed" value={`ZMW ${confirmedValue.toLocaleString()}`} />
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+      <Surface variant="default" className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between" as="div">
         <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 min-w-[280px]">
-          <Search className="w-4 h-4 text-slate-400" />
+          <Search className="h-4 w-4 text-slate-400" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -125,22 +133,25 @@ export default function AdminFeesPage() {
           />
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" role="group" aria-label="Filter by status">
           {(["all", "pending", "confirmed", "rejected"] as const).map((s) => (
             <button
               key={s}
+              type="button"
               onClick={() => setStatusFilter(s)}
-              className={`px-3 py-2 rounded-lg text-xs font-medium capitalize ${
-                statusFilter === s ? "bg-sky-500 text-white" : "bg-slate-100 text-slate-600"
-              }`}
+              aria-pressed={statusFilter === s}
+              className={cn(
+                "rounded-lg px-3 py-2 text-xs font-medium capitalize transition",
+                statusFilter === s ? "bg-sky-500 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              )}
             >
               {s}
             </button>
           ))}
         </div>
-      </div>
+      </Surface>
 
-      <div className="rounded-2xl border border-slate-200 bg-white overflow-x-auto">
+      <Surface variant="default" className="overflow-x-auto p-0" as="div">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-slate-600">
             <tr>
@@ -174,18 +185,18 @@ export default function AdminFeesPage() {
                         <button
                           disabled={st === "confirmed"}
                           onClick={() => updateStatus(r.id, "confirmed")}
-                          className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 grid place-items-center disabled:opacity-50"
+                          className="grid h-8 w-8 place-items-center rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200 disabled:opacity-50"
                           aria-label={`Confirm payment ${r.reference_number || r.id}`}
                         >
-                          <Check className="w-4 h-4" />
+                          <Check className="h-4 w-4" />
                         </button>
                         <button
                           disabled={st === "rejected"}
                           onClick={() => updateStatus(r.id, "rejected")}
-                          className="w-8 h-8 rounded-lg bg-red-50 text-red-600 grid place-items-center disabled:opacity-50"
+                          className="grid h-8 w-8 place-items-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200 disabled:opacity-50"
                           aria-label={`Reject payment ${r.reference_number || r.id}`}
                         >
-                          <X className="w-4 h-4" />
+                          <X className="h-4 w-4" />
                         </button>
                       </div>
                     </td>
@@ -195,17 +206,17 @@ export default function AdminFeesPage() {
             )}
           </tbody>
         </table>
-      </div>
+      </Surface>
     </div>
   );
 }
 
 function Card({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+    <Surface variant="default" className="p-4" as="div">
       <p className="text-xs text-slate-500">{label}</p>
-      <p className="text-2xl font-semibold text-slate-900 mt-1">{value}</p>
-    </div>
+      <p className="mt-1 text-2xl font-semibold text-slate-900">{value}</p>
+    </Surface>
   );
 }
 

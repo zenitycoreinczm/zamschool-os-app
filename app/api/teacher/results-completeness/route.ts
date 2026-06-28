@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 
 import { loadTeacherAssignmentScope } from "@/lib/teacher-assignment-scope-server";
+import {
+  applyPlatformRateLimit,
+  platformRateLimitResponse,
+} from "@/lib/platform-api-guard";
 import { requireTeacherContext } from "@/lib/server-auth";
-import { safeErrorMessage, getClientIp, applyRateLimit } from "@/lib/server-guards";
+import { safeErrorMessage } from "@/lib/server-guards";
 import { applyEdgeCacheHeaders } from "@/lib/edge-cache";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
@@ -13,43 +17,55 @@ export async function GET(req: Request) {
 
     const { userId, schoolId } = access.context;
     if (!schoolId) {
-      return NextResponse.json({ error: "No school linked to this account" }, { status: 403 });
-    }
-
-    // Apply rate limiting
-    const ip = getClientIp(req);
-    const rate = await applyRateLimit({
-      key: `teacher-results-completeness:${userId}:${ip}`,
-      limit: 60,
-      windowMs: 60_000, // 60 requests per minute
-    });
-    if (!rate.allowed) {
       return NextResponse.json(
-        { error: "Too many requests. Please try again shortly." },
-        {
-          status: 429,
-          headers: { "Retry-After": String(rate.retryAfterSec) },
-        }
+        { error: "No school linked to this account" },
+        { status: 403 },
       );
     }
+
+    const rate = await applyPlatformRateLimit({
+      scope: "teacher-results-completeness",
+      schoolId,
+      req,
+      userId,
+      preset: "teacherResultsCompleteness",
+    });
+    if (!rate.allowed) return platformRateLimitResponse(rate);
 
     const { searchParams } = new URL(req.url);
     const classId = searchParams.get("classId");
     const examTitle = searchParams.get("examTitle");
 
-    if (!classId) return NextResponse.json({ error: "classId is required" }, { status: 400 });
-    if (!examTitle) return NextResponse.json({ error: "examTitle is required" }, { status: 400 });
+    if (!classId)
+      return NextResponse.json(
+        { error: "classId is required" },
+        { status: 400 },
+      );
+    if (!examTitle)
+      return NextResponse.json(
+        { error: "examTitle is required" },
+        { status: 400 },
+      );
 
     const assignmentScope = await loadTeacherAssignmentScope({
-      schoolId, actorProfileId: userId,
+      schoolId,
+      actorProfileId: userId,
     });
 
     if (!assignmentScope.allowedClassIds.includes(classId)) {
-      return NextResponse.json({ error: "Access denied to this class" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Access denied to this class" },
+        { status: 403 },
+      );
     }
 
     const supabaseAdmin = getSupabaseAdmin();
-    const [{ data: students }, { data: subjects }, { data: assignments }, { data: classes}] = await Promise.all([
+    const [
+      { data: students },
+      { data: subjects },
+      { data: assignments },
+      { data: classes },
+    ] = await Promise.all([
       supabaseAdmin
         .from("students")
         .select("id, profile_id, student_number, class_id")
@@ -103,10 +119,13 @@ export async function GET(req: Request) {
 
     const subjectMap = new Map((subjects || []).map((s: any) => [s.id, s]));
     const assignmentSubjectMap = new Map(
-      (assignments || []).map((a: any) => [a.id, a.subject_id])
+      (assignments || []).map((a: any) => [a.id, a.subject_id]),
     );
 
-    const resultsByStudent = new Map<string, Map<string, { score: number | null; grade: string | null }>>();
+    const resultsByStudent = new Map<
+      string,
+      Map<string, { score: number | null; grade: string | null }>
+    >();
     for (const r of results || []) {
       const subjectId = assignmentSubjectMap.get(r.assignment_id);
       if (!subjectId) continue;
@@ -121,7 +140,7 @@ export async function GET(req: Request) {
     }
 
     const profileIds = Array.from(
-      new Set((students || []).map((s: any) => s.profile_id).filter(Boolean))
+      new Set((students || []).map((s: any) => s.profile_id).filter(Boolean)),
     );
 
     let profilesById = new Map<string, any>();
@@ -161,7 +180,9 @@ export async function GET(req: Request) {
 
       return {
         studentId: s.id,
-        studentName: [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || "Student",
+        studentName:
+          [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
+          "Student",
         examNumber: s.student_number || "—",
         expectedSubjects: expectedCount,
         uploadedSubjects: uploadedCount,
@@ -191,7 +212,7 @@ export async function GET(req: Request) {
   } catch (error: unknown) {
     return NextResponse.json(
       { error: safeErrorMessage(error, "Failed to check completeness") },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

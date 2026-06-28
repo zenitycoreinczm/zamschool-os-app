@@ -16,7 +16,7 @@ export const options = {
 
 const baseUrl = __ENV.BASE_URL || "http://127.0.0.1:3000";
 
-export default function () {
+export default function smokeScenario() {
   const health = http.get(`${baseUrl}/api/health`);
   check(health, { "health status 200": (r) => r.status === 200 });
 

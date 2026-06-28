@@ -1,4 +1,4 @@
-import { buildTeacherActorIds } from "./live-schema-adapters.js";
+import { buildTeacherActorIds } from "./live-schema-adapters";
 
 type TeacherRow = {
   id: string;

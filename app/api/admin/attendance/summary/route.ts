@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireActorContext } from "@/lib/server-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { safeErrorMessage } from "@/lib/server-guards";
-import { EDGE_CACHE } from "@/lib/edge-cache";
+import { applyEdgeCacheHeaders } from "@/lib/edge-cache";
 
 const ADMIN_ROLES = [
   "SUPER_ADMIN",
@@ -12,6 +12,7 @@ const ADMIN_ROLES = [
   "ICT_ADMIN",
   "ACADEMIC_ADMIN",
   "DISCIPLINE_ADMIN",
+  "REGISTRAR",
   "TEACHER",
 ] as const;
 
@@ -24,7 +25,7 @@ export async function GET(req: Request) {
   try {
     const access = await requireActorContext(
       { allowedRoles: [...ADMIN_ROLES], requireSchool: true },
-      req
+      req,
     );
     if (!access.ok) return access.response;
 
@@ -64,20 +65,24 @@ export async function GET(req: Request) {
     if (error) {
       // Table may not exist yet — return empty gracefully
       if (error.code === "42P01" /* relation does not exist */) {
-        const empty = NextResponse.json({ success: true, data: { rows: [] as AttendanceRow[] } });
-        empty.headers.set("Cache-Control", EDGE_CACHE.privateRead);
-        return empty;
+        const empty = NextResponse.json({
+          success: true,
+          data: { rows: [] as AttendanceRow[] },
+        });
+        return applyEdgeCacheHeaders(empty, "privateRead");
       }
       throw error;
     }
 
-    const response = NextResponse.json({ success: true, data: { rows: rows || [] } });
-    response.headers.set("Cache-Control", EDGE_CACHE.privateRead);
-    return response;
+    const response = NextResponse.json({
+      success: true,
+      data: { rows: rows || [] },
+    });
+    return applyEdgeCacheHeaders(response, "privateRead");
   } catch (error: unknown) {
     return NextResponse.json(
       { error: safeErrorMessage(error, "Failed to load attendance summary") },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

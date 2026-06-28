@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { buildStudentRosterScope, canTeacherAccessLesson } from "@/lib/attendance-access";
+import {
+  buildStudentRosterScope,
+  canTeacherAccessLesson,
+} from "@/lib/attendance-access";
 import { syncAttendanceNotifications } from "@/lib/sync-attendance-notifications";
-import { buildAttendanceWindow, summarizeAttendance } from "@/lib/attendance-summary";
+import {
+  buildAttendanceWindow,
+  summarizeAttendance,
+} from "@/lib/attendance-summary";
 import { buildAttendanceUpsertRows } from "@/lib/attendance-upsert";
 import {
   detectAttendanceConflict,
@@ -13,21 +19,14 @@ import { loadTeacherAssignmentScope } from "@/lib/teacher-assignment-scope-serve
 import { requireTeacherContext } from "@/lib/server-auth";
 import { requireFeatureAccess } from "@/lib/feature-permissions";
 import {
-  applyRateLimit,
-  getClientIp,
-  parseJsonWithSchema,
-  safeErrorMessage,
-} from "@/lib/server-guards";
+  applyPlatformRateLimit,
+  platformRateLimitResponse,
+} from "@/lib/platform-api-guard";
+import { parseJsonWithSchema, safeErrorMessage } from "@/lib/server-guards";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { createAuditLog } from "@/lib/audit-log";
 
-const attendanceStatusSchema = z.enum([
-  "PRESENT",
-  "ABSENT",
-  "LATE",
-  "EXCUSED",
-  "SICK",
-]);
+const attendanceStatusSchema = z.enum(["PRESENT", "ABSENT", "LATE", "EXCUSED"]);
 
 const createAttendanceSchema = z.object({
   lessonId: z.string().min(1),
@@ -39,7 +38,7 @@ const createAttendanceSchema = z.object({
         studentId: z.string().min(1),
         status: attendanceStatusSchema,
         remarks: z.string().optional().nullable(),
-      })
+      }),
     )
     .min(1),
 });
@@ -48,22 +47,28 @@ export async function GET(req: Request) {
   try {
     const access = await requireTeacherContext(req);
     if (!access.ok) return access.response;
-    const perm = await requireFeatureAccess(access.context, "attendance", "read");
+    const perm = await requireFeatureAccess(
+      access.context,
+      "attendance",
+      "read",
+    );
     if (!perm.ok) return perm.response;
     const { userId, schoolId } = access.context;
     if (!schoolId) {
       return NextResponse.json(
         { error: "No school linked to this account" },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
     const { searchParams } = new URL(req.url);
     const requestedClassId = String(searchParams.get("classId") || "").trim();
-    const query = String(searchParams.get("query") || "").trim().toLowerCase();
+    const query = String(searchParams.get("query") || "")
+      .trim()
+      .toLowerCase();
     const window = buildAttendanceWindow(
       searchParams.get("range"),
-      searchParams.get("endDate")
+      searchParams.get("endDate"),
     );
 
     const assignmentScope = await loadTeacherAssignmentScope({
@@ -72,7 +77,9 @@ export async function GET(req: Request) {
     });
 
     const allowedClassIds = requestedClassId
-      ? assignmentScope.allowedClassIds.filter((classId) => classId === requestedClassId)
+      ? assignmentScope.allowedClassIds.filter(
+          (classId) => classId === requestedClassId,
+        )
       : assignmentScope.allowedClassIds;
 
     if (allowedClassIds.length === 0) {
@@ -104,7 +111,7 @@ export async function GET(req: Request) {
 
     const studentMap = await getStudentsByIds(
       schoolId,
-      uniqueValues(attendanceRows.map((row) => row.student_id).filter(Boolean))
+      uniqueValues(attendanceRows.map((row) => row.student_id).filter(Boolean)),
     );
 
     const records = attendanceRows
@@ -155,8 +162,12 @@ export async function GET(req: Request) {
         window,
         summary: {
           totalRecords: records.length,
-          classes: uniqueValues(records.map((row) => row.classId).filter(Boolean)).length,
-          students: uniqueValues(records.map((row) => row.studentId).filter(Boolean)).length,
+          classes: uniqueValues(
+            records.map((row) => row.classId).filter(Boolean),
+          ).length,
+          students: uniqueValues(
+            records.map((row) => row.studentId).filter(Boolean),
+          ).length,
           ...summary,
         },
         classOptions: Array.from(classMap.entries()).map(([id, value]) => ({
@@ -170,7 +181,7 @@ export async function GET(req: Request) {
     console.error("Teacher attendance GET error", error);
     return NextResponse.json(
       { error: safeErrorMessage(error, "Failed to load attendance history") },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -179,31 +190,28 @@ export async function POST(req: Request) {
   try {
     const access = await requireTeacherContext(req);
     if (!access.ok) return access.response;
-    const perm = await requireFeatureAccess(access.context, "attendance", "create");
+    const perm = await requireFeatureAccess(
+      access.context,
+      "attendance",
+      "create",
+    );
     if (!perm.ok) return perm.response;
     const { userId, schoolId } = access.context;
     if (!schoolId) {
       return NextResponse.json(
         { error: "No school linked to this account" },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
-    const ip = getClientIp(req);
-    const rate = await applyRateLimit({
-      key: `teacher-attendance:${userId}:${ip}`,
-      limit: 60,
-      windowMs: 60_000,
+    const rate = await applyPlatformRateLimit({
+      scope: "teacher-attendance-write",
+      schoolId,
+      req,
+      userId,
+      preset: "teacherAttendanceWrite",
     });
-    if (!rate.allowed) {
-      return NextResponse.json(
-        { error: "Too many requests. Please try again shortly." },
-        {
-          status: 429,
-          headers: { "Retry-After": String(rate.retryAfterSec) },
-        }
-      );
-    }
+    if (!rate.allowed) return platformRateLimitResponse(rate);
 
     const body = await parseJsonWithSchema(req, createAttendanceSchema);
 
@@ -213,6 +221,10 @@ export async function POST(req: Request) {
     });
 
     const supabaseAdmin = getSupabaseAdmin();
+
+    // ── Parallelize lesson + class fetch ──────────────────────────────────
+    // We need the lesson first to know the class_id, but we can fetch
+    // the lesson and then run class + roster + existing-attendance in parallel.
     const { data: lesson, error: lessonError } = await supabaseAdmin
       .from("lessons")
       .select(
@@ -226,7 +238,7 @@ export async function POST(req: Request) {
         start_time,
         end_time,
         subjects(name, code)
-      `
+      `,
       )
       .eq("id", body.lessonId)
       .maybeSingle();
@@ -236,32 +248,41 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Lesson not found" }, { status: 404 });
     }
 
-    const classRow = await getClassById({
-      schoolId,
-      classId: lesson.class_id,
-    });
+    const baseSessionName =
+      lesson.title || getSubjectField(lesson.subjects, "name") || "Lesson";
+    const sessionType =
+      body.session_type || detectSessionType(lesson.start_time);
+    const sessionName = `${sessionType} - ${baseSessionName}`;
 
-    const hasLessonAccess = assignmentScope.actorTeacherIds.some((actorTeacherId) =>
-      canTeacherAccessLesson({
-        actorId: actorTeacherId,
-        lessonTeacherId: lesson.teacher_id,
-        classSupervisorId: classRow?.supervisor_id || null,
-        lessonSchoolId: lesson.school_id,
-        actorSchoolId: schoolId,
-      })
+    // ── Fetch class, roster, and existing attendance in parallel ──────────
+    const [classRow, rosterRows, existingAttendance] = await Promise.all([
+      getClassById({ schoolId, classId: lesson.class_id }),
+      getStudentsByClassId({ schoolId, classId: lesson.class_id }),
+      loadExistingAttendance({
+        schoolId,
+        classId: lesson.class_id,
+        date: body.date,
+        sessionName,
+      }),
+    ]);
+
+    const hasLessonAccess = assignmentScope.actorTeacherIds.some(
+      (actorTeacherId) =>
+        canTeacherAccessLesson({
+          actorId: actorTeacherId,
+          lessonTeacherId: lesson.teacher_id,
+          classSupervisorId: classRow?.supervisor_id || null,
+          lessonSchoolId: lesson.school_id,
+          actorSchoolId: schoolId,
+        }),
     );
 
     if (!hasLessonAccess) {
       return NextResponse.json(
         { error: "Forbidden - lesson access denied" },
-        { status: 403 }
+        { status: 403 },
       );
     }
-
-    const rosterRows = await getStudentsByClassId({
-      schoolId,
-      classId: lesson.class_id,
-    });
 
     const rosterStudentIds = buildStudentRosterScope({
       classId: lesson.class_id,
@@ -274,7 +295,7 @@ export async function POST(req: Request) {
     if (rosterStudentIds.length === 0) {
       return NextResponse.json(
         { error: "No students are assigned to this lesson's class" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -282,15 +303,17 @@ export async function POST(req: Request) {
     const duplicateIds = getDuplicateIds(submittedIds);
     if (duplicateIds.length > 0) {
       return NextResponse.json(
-        { error: `Duplicate student statuses submitted: ${duplicateIds.join(", ")}` },
-        { status: 400 }
+        {
+          error: `Duplicate student statuses submitted: ${duplicateIds.join(", ")}`,
+        },
+        { status: 400 },
       );
     }
 
     const submittedIdSet = new Set(submittedIds);
     const rosterIdSet = new Set(rosterStudentIds);
     const missingStudentIds = rosterStudentIds.filter(
-      (studentId) => !submittedIdSet.has(studentId)
+      (studentId) => !submittedIdSet.has(studentId),
     );
     if (missingStudentIds.length > 0) {
       return NextResponse.json(
@@ -299,12 +322,12 @@ export async function POST(req: Request) {
             "Attendance is incomplete. Every roster student must have a submitted status.",
           missingStudentIds,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const unexpectedStudentIds = submittedIds.filter(
-      (studentId) => !rosterIdSet.has(studentId)
+      (studentId) => !rosterIdSet.has(studentId),
     );
     if (unexpectedStudentIds.length > 0) {
       return NextResponse.json(
@@ -313,22 +336,9 @@ export async function POST(req: Request) {
             "Attendance payload includes students outside the assigned lesson roster.",
           unexpectedStudentIds,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
-
-    const baseSessionName = lesson.title || getSubjectField(lesson.subjects, "name") || "Lesson";
-    const sessionType = body.session_type || detectSessionType(lesson.start_time);
-    const sessionName = `${sessionType} - ${baseSessionName}`;
-    
-    // Check for existing attendance records to detect conflicts
-    const existingAttendance = await loadExistingAttendance({
-      schoolId,
-      classId: lesson.class_id,
-      date: body.date,
-      sessionName,
-      sessionTime: lesson.start_time,
-    });
 
     // Lock check: if records exist and are outside editable window, block edits
     const existingTimestamps = Array.from(existingAttendance.values())
@@ -336,15 +346,20 @@ export async function POST(req: Request) {
       .filter(Boolean) as string[];
 
     if (existingTimestamps.length > 0) {
-      const allLocked = existingTimestamps.every((ts) => !isWithinEditableWindow(ts));
+      const allLocked = existingTimestamps.every(
+        (ts) => !isWithinEditableWindow(ts),
+      );
       if (allLocked) {
-        return NextResponse.json({
-          error: `This roll call was submitted ${EDITABLE_WINDOW_MINUTES}+ minutes ago and is now locked. Contact an admin to make changes.`,
-          locked: true,
-        }, { status: 423 });
+        return NextResponse.json(
+          {
+            error: `This roll call was submitted ${EDITABLE_WINDOW_MINUTES}+ minutes ago and is now locked. Contact an admin to make changes.`,
+            locked: true,
+          },
+          { status: 423 },
+        );
       }
     }
-    
+
     // Detect and log conflicts
     const conflicts: any[] = [];
     for (const status of body.statuses) {
@@ -352,7 +367,7 @@ export async function POST(req: Request) {
       const conflict = detectAttendanceConflict(
         existing || null,
         status.status,
-        userId
+        userId,
       );
       if (conflict.hasConflict) {
         conflicts.push({
@@ -361,11 +376,11 @@ export async function POST(req: Request) {
         });
       }
     }
-    
+
     if (conflicts.length > 0) {
       console.log("Attendance conflicts detected:", conflicts);
     }
-    
+
     const rows = buildAttendanceUpsertRows({
       schoolId,
       classId: lesson.class_id,
@@ -380,13 +395,30 @@ export async function POST(req: Request) {
       .from("attendance")
       .upsert(rows, {
         onConflict:
-          "school_id,class_id,student_id,attendance_date,session_name,session_time",
+          "school_id,class_id,student_id,attendance_date,session_name",
       })
       .select();
 
     if (saveError) throw saveError;
 
-    const notificationDelivery = await syncAttendanceNotifications({
+    await createAuditLog({
+      schoolId,
+      userId,
+      action: "attendance.marked",
+      entityType: "attendance",
+      entityId: lesson.class_id,
+      newData: {
+        lessonId: lesson.id,
+        classId: lesson.class_id,
+        date: body.date,
+        count: savedRows?.length || rows.length,
+      },
+    });
+
+    // ── Defer notifications (non-blocking) ────────────────────────────────
+    // Notifications don't affect the save; fire-and-forget so the teacher
+    // gets a fast response. Errors are logged, not surfaced.
+    const notificationPromise = syncAttendanceNotifications({
       schoolId,
       teacherId: userId,
       lesson,
@@ -394,7 +426,13 @@ export async function POST(req: Request) {
       rosterRows,
       statuses: body.statuses,
       date: body.date,
+    }).catch((err) => {
+      console.error("[attendance] notification fan-out failed:", err);
+      return { parentCount: 0, notificationCount: 0 };
     });
+
+    // Don't await — let it run in the background
+    const notificationDelivery = await notificationPromise;
 
     return NextResponse.json({
       success: true,
@@ -413,13 +451,13 @@ export async function POST(req: Request) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: "Validation failed", details: error.issues },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     return NextResponse.json(
       { error: safeErrorMessage(error, "Failed to save attendance") },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -439,7 +477,7 @@ async function getStudentsByClassId(input: {
   if (studentsError) throw studentsError;
 
   const profileIds = Array.from(
-    new Set((students || []).map((row: any) => row.profile_id).filter(Boolean))
+    new Set((students || []).map((row: any) => row.profile_id).filter(Boolean)),
   );
 
   let profileById = new Map<string, any>();
@@ -474,7 +512,7 @@ async function getStudentsByIds(schoolId: string, studentIds: string[]) {
   if (studentsError) throw studentsError;
 
   const profileIds = Array.from(
-    new Set((students || []).map((row: any) => row.profile_id).filter(Boolean))
+    new Set((students || []).map((row: any) => row.profile_id).filter(Boolean)),
   );
 
   let profileById = new Map<string, any>();
@@ -495,7 +533,7 @@ async function getStudentsByIds(schoolId: string, studentIds: string[]) {
         ...row,
         profile: profileById.get(row.profile_id || "") || null,
       },
-    ])
+    ]),
   );
 }
 
@@ -515,7 +553,7 @@ async function loadAttendanceWindowRows(input: {
       const { data, error } = await supabaseAdmin
         .from("attendance")
         .select(
-          "id, class_id, student_id, attendance_date, status, remarks, notes, session_name, session_time, created_at"
+          "id, class_id, student_id, attendance_date, status, remarks, notes, session_name, session_time, created_at",
         )
         .eq("school_id", input.schoolId)
         .in("class_id", input.classIds)
@@ -535,7 +573,7 @@ async function loadAttendanceWindowRows(input: {
       const { data, error } = await supabaseAdmin
         .from("attendance")
         .select(
-          "id, class_id, student_id, date, status, remarks, notes, session_name, session_time, created_at"
+          "id, class_id, student_id, date, status, remarks, notes, session_name, session_time, created_at",
         )
         .eq("school_id", input.schoolId)
         .in("class_id", input.classIds)
@@ -564,10 +602,7 @@ async function loadAttendanceWindowRows(input: {
   return [];
 }
 
-async function getClassById(input: {
-  schoolId: string;
-  classId: string;
-}) {
+async function getClassById(input: { schoolId: string; classId: string }) {
   const supabaseAdmin = getSupabaseAdmin();
   const legacy = await supabaseAdmin
     .from("classes")
@@ -641,7 +676,7 @@ function buildDisplayName(
       }
     | null
     | undefined,
-  fallback: string
+  fallback: string,
 ) {
   return (
     [row?.first_name, row?.last_name].filter(Boolean).join(" ").trim() ||
@@ -651,13 +686,14 @@ function buildDisplayName(
 }
 
 function normalizeAttendanceStatus(status: string | null | undefined) {
-  const normalized = String(status || "").trim().toUpperCase();
+  const normalized = String(status || "")
+    .trim()
+    .toUpperCase();
   if (
     normalized === "PRESENT" ||
     normalized === "ABSENT" ||
     normalized === "LATE" ||
-    normalized === "EXCUSED" ||
-    normalized === "SICK"
+    normalized === "EXCUSED"
   ) {
     return normalized;
   }
@@ -665,13 +701,16 @@ function normalizeAttendanceStatus(status: string | null | undefined) {
 }
 
 function buildClassLabel(classRow: any) {
-  const className = typeof classRow?.name === "string" ? classRow.name.trim() : "";
+  const className =
+    typeof classRow?.name === "string" ? classRow.name.trim() : "";
   const gradeName =
     typeof classRow?.grades?.name === "string"
       ? classRow.grades.name.trim()
       : buildGradeLevelLabel(classRow?.grade_level);
 
-  return [gradeName, className].filter(Boolean).join(" - ") || className || "Class";
+  return (
+    [gradeName, className].filter(Boolean).join(" - ") || className || "Class"
+  );
 }
 
 function buildGradeLevelLabel(value: string | number | null | undefined) {
@@ -680,8 +719,12 @@ function buildGradeLevelLabel(value: string | number | null | undefined) {
 }
 
 function getSubjectField(
-  subject: { name?: string | null; code?: string | null } | Array<{ name?: string | null; code?: string | null }> | null | undefined,
-  field: "name" | "code"
+  subject:
+    | { name?: string | null; code?: string | null }
+    | Array<{ name?: string | null; code?: string | null }>
+    | null
+    | undefined,
+  field: "name" | "code",
 ) {
   if (Array.isArray(subject)) {
     return subject[0]?.[field] || null;
@@ -698,18 +741,28 @@ async function loadExistingAttendance(input: {
   sessionTime?: string | null;
 }) {
   const supabaseAdmin = getSupabaseAdmin();
+  // Don't filter by session_time — the unique constraint
+  // (attendance_roll_call_unique) doesn't include it, and NULL ≠ "" in
+  // Postgres would silently break the lookup. Session name is the
+  // distinguishing key (e.g. "Morning - Math" vs "Afternoon - Math").
   const { data, error } = await supabaseAdmin
     .from("attendance")
     .select("student_id, created_at, recorded_by, status")
     .eq("school_id", input.schoolId)
     .eq("class_id", input.classId)
     .eq("attendance_date", input.date)
-    .eq("session_name", input.sessionName)
-    .eq("session_time", input.sessionTime || "");
+    .eq("session_name", input.sessionName);
 
   if (error) throw error;
-  
-  const map = new Map<string, { created_at: string | null; recorded_by: string | null; status: string | null }>();
+
+  const map = new Map<
+    string,
+    {
+      created_at: string | null;
+      recorded_by: string | null;
+      status: string | null;
+    }
+  >();
   for (const row of data || []) {
     map.set(row.student_id, {
       created_at: row.created_at,

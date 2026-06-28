@@ -12,9 +12,9 @@ You run a DR drill at least every 90 days. The drill restores a production snaps
 - A representative read flow (workspace dashboard) renders.
 - A representative write flow (post an announcement) succeeds.
 
-You record the drill date, duration, and result in the DR drill log under `docs/_archive/operations/dr-drill-log.md`. If a drill fails, the release is paused until the failure is root-caused.
+You record the drill date, duration, and result in the team's DR drill log (live in the team wiki; link in the handoff doc). If a drill fails, the release is paused until the failure is root-caused.
 
-The full runbook lives at `docs/_archive/operations/dr-drill-runbook.md`. You read it before scheduling a drill — it has changed since the last time you ran one.
+The full runbook lives in the team wiki alongside the DR drill log. You read it before scheduling a drill — it has changed since the last time you ran one.
 
 ## Load testing
 
@@ -25,7 +25,7 @@ You run load tests at four tiers. Each tier targets a realistic user mix.
 - **tier2_500** — 500 users, 10 minutes. Used before a release.
 - **tier3_1000** — 1000 users, 15 minutes. Used quarterly and before a marketing-driven traffic spike.
 
-You run them via `npm run load:test:<tier>`. The k6-style harness lives in `scripts/load-test/`. The current thresholds (p95 latency, error rate, gateway hit ratio) are recorded in `docs/_archive/operations/load-test-baseline.md`.
+You run them via `npm run load:test:<tier>`. The current thresholds (p95 latency, error rate, gateway hit ratio) live in the team wiki's load-test-baseline page; the wiki is updated after every tier3 run.
 
 You should compare each run to the baseline and investigate any regression over 15%. A regression under 15% is recorded and watched; a regression over 30% blocks the release.
 
@@ -38,7 +38,7 @@ You follow the four-step pattern: detect, mitigate, communicate, recover.
 3. **Communicate.** You post to the incident channel within 15 minutes with: what's broken, what's affected, what's the mitigation, when the next update will land. You update every 30 minutes until resolved.
 4. **Recover.** After mitigation, you restore the previous build, verify metrics return to baseline, and close the incident.
 
-You log the incident in `docs/_archive/operations/incident-log.md`. The log entry includes: time of detection, time of mitigation, time of full recovery, root cause, customer impact, and follow-ups.
+You log the incident in the team's incident log (live in the team wiki). The log entry includes: time of detection, time of mitigation, time of full recovery, root cause, customer impact, and follow-ups.
 
 ## On-call
 

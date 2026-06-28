@@ -14,11 +14,6 @@ import type { InboxItem } from "@/lib/notifications-inbox";
 
 type InboxRecord = InboxItem & { recordId?: string };
 
-// Static analysis requirements:
-// DetailPanel
-// selectedItem
-// onClick={() => { void openItem(item); }}
-
 function mapRecord(row: InboxRecord): WorkspaceNotificationItem {
   return {
     id: row.id,

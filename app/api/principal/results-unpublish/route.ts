@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { requirePrincipalOverrideContext } from "@/lib/server-auth";
-import { parseJsonWithSchema, safeErrorMessage, getClientIp } from "@/lib/server-guards";
+import { requireFeatureAccess } from "@/lib/feature-permissions";
+import {
+  parseJsonWithSchema,
+  safeErrorMessage,
+  getClientIp,
+} from "@/lib/server-guards";
 import { supabaseAdmin } from "@/lib/supabase";
 import { auditDomainWrite } from "@/lib/audit-domain";
 import { invalidatePublishedResultsCache } from "@/lib/published-results-read";
@@ -22,19 +27,25 @@ const unpublishSchema = z
       (value.examTitle && value.classId),
     {
       message: "assignmentId, resultIds, or examTitle+classId is required",
-    }
+    },
   );
 
 export async function POST(req: Request) {
   try {
     const access = await requirePrincipalOverrideContext(req);
     if (!access.ok) return access.response;
+    const perm = await requireFeatureAccess(
+      access.context,
+      "overrides",
+      "update",
+    );
+    if (!perm.ok) return perm.response;
 
     const { userId, schoolId } = access.context;
     if (!schoolId) {
       return NextResponse.json(
         { error: "No school linked to this account" },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
@@ -58,7 +69,7 @@ export async function POST(req: Request) {
       if (examAssignmentIds.length === 0) {
         return NextResponse.json(
           { error: "No assignments found for this exam and class" },
-          { status: 404 }
+          { status: 404 },
         );
       }
       query = query.in("assignment_id", examAssignmentIds);
@@ -74,7 +85,7 @@ export async function POST(req: Request) {
     if (!publishedResults || publishedResults.length === 0) {
       return NextResponse.json(
         { error: "No published results found to unpublish" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -119,13 +130,13 @@ export async function POST(req: Request) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: "Validation failed", details: error.issues },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     return NextResponse.json(
       { error: safeErrorMessage(error, "Failed to unpublish results") },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

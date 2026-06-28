@@ -33,7 +33,9 @@ export default function FinanceChart() {
       try {
         if (cancelled) return;
 
-        const body = await adminApiJson<{ data?: any[] }>("/api/admin/payments");
+        const body = await adminApiJson<{ data?: any[] }>(
+          "/api/admin/payments",
+        );
         setRows(body.data || []);
       } catch (error) {
         if (cancelled || isAbortLikeError(error)) return;
@@ -73,13 +75,18 @@ export default function FinanceChart() {
       if (!createdAt) continue;
 
       const createdDate = new Date(createdAt);
-      if (Number.isNaN(createdDate.getTime()) || createdDate.getFullYear() !== currentYear) {
+      if (
+        Number.isNaN(createdDate.getTime()) ||
+        createdDate.getFullYear() !== currentYear
+      ) {
         continue;
       }
 
       const monthIndex = createdDate.getMonth();
       const amount = Number(row?.amount || 0);
-      const status = String(row?.status || "").trim().toUpperCase();
+      const status = String(row?.status || "")
+        .trim()
+        .toUpperCase();
 
       if (status === "PAID" || status === "CONFIRMED") {
         months[monthIndex].collected += amount;
@@ -93,9 +100,9 @@ export default function FinanceChart() {
   const hasData = data.some((item) => item.collected > 0 || item.pending > 0);
 
   return (
-    <div className="bg-white rounded-xl w-full h-full min-h-[360px] p-4 flex flex-col">
+    <div className="bg-white rounded-workspace-xl w-full h-full min-h-[360px] p-5 flex flex-col shadow-sm border border-slate-100">
       <div className="flex justify-between items-center">
-        <h1 className="text-lg font-semibold">Payments</h1>
+        <h2 className="text-lg font-semibold text-slate-900">Payments</h2>
         <MoreHorizontal className="w-5 h-5 text-gray-400" />
       </div>
       <div className="mt-3 h-[280px] min-h-[240px] w-full min-w-0">
@@ -106,57 +113,62 @@ export default function FinanceChart() {
         ) : !hasData ? (
           <div className="h-full grid place-items-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-center px-6">
             <div>
-              <p className="text-sm font-medium text-slate-600">No payment activity yet</p>
-              <p className="mt-1 text-xs text-slate-400">Collected and pending payment totals will appear here once transactions are recorded.</p>
+              <p className="text-sm font-medium text-slate-600">
+                No payment activity yet
+              </p>
+              <p className="mt-1 text-xs text-slate-400">
+                Collected and pending payment totals will appear here once
+                transactions are recorded.
+              </p>
             </div>
           </div>
         ) : (
           <ChartFrame minHeight={280}>
             {(size) => (
-            <LineChart
-              width={size.width}
-              height={size.height}
-              data={data}
-              margin={{
-                top: 5,
-                right: 30,
-                left: 20,
-                bottom: 5,
-              }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
-              <XAxis
-                dataKey="name"
-                axisLine={false}
-                tick={{ fill: "#d1d5db" }}
-                tickLine={false}
-                tickMargin={10}
-              />
-              <YAxis
-                axisLine={false}
-                tick={{ fill: "#d1d5db" }}
-                tickLine={false}
-                tickMargin={20}
-              />
-              <Tooltip />
-              <Legend
-                align="center"
-                verticalAlign="top"
-                wrapperStyle={{ paddingTop: "10px", paddingBottom: "30px" }}
-              />
-              <Line
-                type="monotone"
-                dataKey="collected"
-                stroke="#C3EBFA"
-                strokeWidth={5}
-              />
-              <Line
-                type="monotone"
-                dataKey="pending"
-                stroke="#CFCEFF"
-                strokeWidth={5}
-              />
-            </LineChart>
+              <LineChart
+                width={size.width}
+                height={size.height}
+                data={data}
+                margin={{
+                  top: 5,
+                  right: 30,
+                  left: 20,
+                  bottom: 5,
+                }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+                <XAxis
+                  dataKey="name"
+                  axisLine={false}
+                  tick={{ fill: "#d1d5db" }}
+                  tickLine={false}
+                  tickMargin={10}
+                />
+                <YAxis
+                  axisLine={false}
+                  tick={{ fill: "#d1d5db" }}
+                  tickLine={false}
+                  tickMargin={20}
+                />
+                <Tooltip />
+                <Legend
+                  align="center"
+                  verticalAlign="top"
+                  wrapperStyle={{ paddingTop: "10px", paddingBottom: "30px" }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="collected"
+                  stroke="#C3EBFA"
+                  strokeWidth={5}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="pending"
+                  stroke="#CFCEFF"
+                  strokeWidth={5}
+                />
+              </LineChart>
             )}
           </ChartFrame>
         )}

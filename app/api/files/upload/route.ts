@@ -1,57 +1,77 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 
-import { requireActorContext } from "@/lib/server-auth";
-import { applyRateLimit, safeErrorMessage } from "@/lib/server-guards";
-import { uploadFile, buildKey } from "@/lib/r2-client";
-import { validateFileUpload } from "@/lib/image-optimization";
-
-/** Profile pictures use POST /api/account/avatar (Supabase), not this route. */
-const ALLOWED_ENTITY_TYPES = ["assignment", "submission", "announcement", "receipt", "message", "document"] as const;
-
-async function checkUploadRateLimit(userId: string): Promise<boolean> {
-  const result = await applyRateLimit({
-    key: `file_upload:${userId}`,
-    limit: 20,
-    windowMs: 60_000,
-  });
-  return result.allowed;
-}
+import { uploadFile } from "@/lib/r2-client";
+import { safeErrorMessage } from "@/lib/server-guards";
 
 export async function POST(req: NextRequest) {
   try {
-    const access = await requireActorContext(
-      { allowedRoles: ["ADMIN", "TEACHER", "STUDENT", "PARENT", "PAYMENTS"], requireSchool: true },
-      req
-    );
-    if (!access.ok) return access.response;
-
-    const allowed = await checkUploadRateLimit(access.context.userId);
-    if (!allowed) {
-      return NextResponse.json({ error: "Upload limit reached. Try again later." }, { status: 429 });
-    }
-
     const formData = await req.formData();
-    const file = formData.get("file") as File | null;
-    const entityType = formData.get("entityType") as string | null;
+    const file = formData.get("file");
+    const entityType = String(formData.get("entityType") || "").trim();
 
-    if (!file || !entityType || !ALLOWED_ENTITY_TYPES.includes(entityType as any)) {
-      return NextResponse.json({ error: "Invalid request. Provide a file and a valid entityType." }, { status: 400 });
+    if (!(file instanceof File) || !entityType) {
+      return NextResponse.json(
+        { error: "Invalid request. Provide a file and a valid entityType." },
+        { status: 400 },
+      );
     }
 
-    const validation = validateFileUpload({ name: file.name, type: file.type, size: file.size });
-    if (!validation.valid) {
-      return NextResponse.json({ error: validation.error }, { status: 400 });
+    const authorizeUrl = new URL("/api/files/authorize-upload", req.url);
+    const authHeader =
+      req.headers.get("authorization") || req.headers.get("Authorization");
+    const authorizeHeaders = new Headers({
+      "Content-Type": "application/json",
+    });
+    if (authHeader) {
+      authorizeHeaders.set("Authorization", authHeader);
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const schoolId = access.context.schoolId || "default";
-    const key = buildKey(schoolId, entityType, access.context.userId, file.name);
+    const authorizeResponse = await fetch(
+      new Request(authorizeUrl.toString(), {
+        method: "POST",
+        headers: authorizeHeaders,
+        body: JSON.stringify({
+          filename: file.name,
+          contentType: file.type || "application/octet-stream",
+          size: file.size,
+          entityType,
+        }),
+      }),
+    );
 
-    const result = await uploadFile(key, buffer, { bucket: "uploads", contentType: file.type });
+    if (!authorizeResponse.ok) {
+      const errorBody = await authorizeResponse.json().catch(() => null);
+      return NextResponse.json(
+        { error: errorBody?.error || "Upload authorization failed" },
+        { status: authorizeResponse.status },
+      );
+    }
+
+    const authorization = (await authorizeResponse.json()) as {
+      bucket?: string;
+      key?: string;
+    };
+    const key = String(authorization.key || "").trim();
+    if (!key) {
+      return NextResponse.json(
+        { error: "Upload authorization did not include a storage key" },
+        { status: 502 },
+      );
+    }
+
+    const result = await uploadFile(
+      key,
+      Buffer.from(await file.arrayBuffer()),
+      {
+        bucket: "uploads",
+        contentType: file.type || "application/octet-stream",
+      },
+    );
 
     return NextResponse.json({
+      bucket: "uploads" as const,
       key: result.key,
+      url: result.url || null,
       size: file.size,
       mimeType: file.type,
       originalName: file.name,
@@ -59,7 +79,7 @@ export async function POST(req: NextRequest) {
   } catch (error: unknown) {
     return NextResponse.json(
       { error: safeErrorMessage(error, "Failed to upload file") },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

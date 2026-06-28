@@ -62,29 +62,32 @@ export default function UserCard({ type }: { type: UserCardType }) {
       type="button"
       onClick={handleClick}
       className={cn(
-        "group min-w-[8.125rem] rounded-workspace-xl border bg-gradient-to-br p-4 text-left shadow-workspace-sm transition-all duration-[var(--duration-workspace-normal)] hover:-translate-y-0.5 hover:shadow-workspace-md focus-visible:shadow-workspace-focus",
+        "group ws-card-glow ws-hover-lift min-w-[8.125rem] rounded-workspace-xl border bg-gradient-to-br p-4 text-left shadow-workspace-sm focus-visible:shadow-workspace-focus relative overflow-hidden backdrop-blur-sm",
         roleStatSurface[type]
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="max-w-[9rem] truncate rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-white/80">
+        <span className="max-w-[9rem] truncate rounded-full bg-white/90 px-2.5 py-0.5 text-[10px] font-semibold text-slate-800 shadow-2xs ring-1 ring-black/5">
           {academicLabel}
         </span>
         <span
-          className="text-slate-500/80 transition group-hover:text-slate-700"
+          className="text-slate-500/80 transition group-hover:scale-110 group-hover:text-slate-900"
           aria-hidden
         >
           <MoreHorizontal className="h-5 w-5" />
         </span>
       </div>
-      <p className={cn("mt-4 text-[2rem] font-bold leading-none text-slate-900", ws.tabular)}>
+      <p className={cn("mt-4 text-[2rem] font-bold leading-none tracking-tight text-slate-900", ws.tabular)}>
         {loading ? (
           <Loader2 className="h-7 w-7 animate-spin text-slate-400" aria-label="Loading count" />
         ) : (
           (count ?? 0).toLocaleString()
         )}
       </p>
-      <p className="mt-2 text-sm font-medium capitalize text-slate-600">{type}s</p>
+      <div className="mt-2 flex items-center justify-between">
+        <p className="text-sm font-semibold capitalize text-slate-700">{type}s</p>
+        <span className="text-[11px] font-medium text-slate-400 opacity-0 transition-opacity duration-200 group-hover:opacity-100">View &rarr;</span>
+      </div>
     </button>
   );
 }

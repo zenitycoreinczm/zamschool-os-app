@@ -1,4 +1,4 @@
-import { buildAttendanceSessionKey } from "./live-schema-adapters.js";
+import { buildAttendanceSessionKey } from "./live-schema-adapters";
 
 type LessonRow = {
   id?: string | null;

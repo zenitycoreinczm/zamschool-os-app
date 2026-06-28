@@ -5,6 +5,7 @@ node_modules/
 
 # Next.js
 .next/
+.next_broken_*/
 out/
 
 # Production
@@ -50,54 +51,15 @@ tmp/
 *.tsbuildinfo
 tsconfig.tsbuildinfo
 
-# Build outputs
-build-out.txt
-
-# Test outputs
-test-output.log
-*.test.mjs
-__tests__/
-
 # Development files
 scratch/
+terminals/
+
+# Logs and stray shell artefacts
 *.log
 nul
-supa_token.txt
 token_env.sh
-check_cols.sql
-check_cols2.sql
-check_cols_payload.json
-check_cols.cjs
-check_db.mjs
-check-uuids.mjs
-run_sql.cjs
-test-rls-client.mjs
-
-# Documentation files that shouldn't be in repo
-AUDIT_REPORT.html
-IMPLEMENTATION_SUMMARY.md
-MIGRATION_GUIDE.md
-TEACHER_PAYMENTS_IMPLEMENTATION_SUMMARY.md
-mobileapp_plan.md
-task_progress.md
-webapp-audit.json
-eslint-done.txt
-eslint-err.txt
-eslint-report.json
-skills-lock.json
-metadata.json
-
-# Scripts that shouldn't be committed
-automate-test.js
-automater.cjs
-next.config.test.mjs
-package.test.mjs
-proxy.test.mjs
-security-remediation.test.mjs
-standalone-start-regression.test.mjs
-teacher-workspace-regression.test.mjs
-ui-regression.test.mjs
-landing-footer-legal.test.mjs
+supa_token.txt
 
 # MCP and agent configs
 .mcp.json
@@ -105,5 +67,3 @@ landing-footer-legal.test.mjs
 
 # Misc
 .vercel/
-workers/
-terminals/

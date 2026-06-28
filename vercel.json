@@ -14,9 +14,15 @@
   },
   "headers": [
     {
-      "source": "/api/(.*)",
+      "source": "/api/health",
       "headers": [
-        { "key": "Cache-Control", "value": "public, s-maxage=60, stale-while-revalidate=300" }
+        { "key": "Cache-Control", "value": "public, max-age=10, stale-while-revalidate=30" }
+      ]
+    },
+    {
+      "source": "/api/public/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=86400, stale-while-revalidate=604800" }
       ]
     },
     {

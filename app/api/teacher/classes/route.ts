@@ -1,16 +1,22 @@
 import { NextResponse } from "next/server";
 
-import { buildStudentRosterScope, canTeacherAccessLesson } from "@/lib/attendance-access";
 import {
-  buildAttendanceSessionKey,
-} from "@/lib/live-schema-adapters";
+  buildStudentRosterScope,
+  canTeacherAccessLesson,
+} from "@/lib/attendance-access";
+import { buildAttendanceSessionKey } from "@/lib/live-schema-adapters";
 import { loadTeacherAssignmentScope } from "@/lib/teacher-assignment-scope-server";
+import {
+  applyPlatformRateLimit,
+  platformRateLimitResponse,
+} from "@/lib/platform-api-guard";
 import { requireTeacherContext } from "@/lib/server-auth";
-import { safeErrorMessage, getClientIp, applyRateLimit } from "@/lib/server-guards";
+import { safeErrorMessage } from "@/lib/server-guards";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveLessonDayOfWeek } from "@/lib/lesson-day";
 
-const READ_MOSTLY_PRIVATE_CACHE = "private, max-age=30, stale-while-revalidate=120";
+const READ_MOSTLY_PRIVATE_CACHE =
+  "private, max-age=30, stale-while-revalidate=120";
 
 export async function GET(req: Request) {
   try {
@@ -20,29 +26,22 @@ export async function GET(req: Request) {
     if (!schoolId) {
       return NextResponse.json(
         { error: "No school linked to this account" },
-        { status: 403 }
+        { status: 403 },
       );
     }
 
-    // Apply rate limiting
-    const ip = getClientIp(req);
-    const rate = await applyRateLimit({
-      key: `teacher-classes:${userId}:${ip}`,
-      limit: 120,
-      windowMs: 60_000, // 120 requests per minute
+    const rate = await applyPlatformRateLimit({
+      scope: "teacher-classes",
+      schoolId,
+      req,
+      userId,
+      preset: "teacherClasses",
     });
-    if (!rate.allowed) {
-      return NextResponse.json(
-        { error: "Too many requests. Please try again shortly." },
-        {
-          status: 429,
-          headers: { "Retry-After": String(rate.retryAfterSec) },
-        }
-      );
-    }
+    if (!rate.allowed) return platformRateLimitResponse(rate);
 
     const { searchParams } = new URL(req.url);
-    const date = searchParams.get("date") || new Date().toISOString().slice(0, 10);
+    const date =
+      searchParams.get("date") || new Date().toISOString().slice(0, 10);
     const lessonDayOfWeek = resolveLessonDayOfWeek(date);
 
     const assignmentScope = await loadTeacherAssignmentScope({
@@ -70,8 +69,8 @@ export async function GET(req: Request) {
       new Set(
         lessons
           .map((lesson: any) => lesson.class_id)
-          .filter((value: string | null) => Boolean(value))
-      )
+          .filter((value: string | null) => Boolean(value)),
+      ),
     );
 
     const [studentRows, attendanceRows, classesById] = await Promise.all([
@@ -85,11 +84,12 @@ export async function GET(req: Request) {
         canTeacherAccessLesson({
           actorId: actorTeacherId,
           lessonTeacherId: lesson.teacher_id,
-          classSupervisorId: classesById.get(lesson.class_id || "")?.supervisor_id || null,
+          classSupervisorId:
+            classesById.get(lesson.class_id || "")?.supervisor_id || null,
           lessonSchoolId: lesson.school_id,
           actorSchoolId: schoolId,
-        })
-      )
+        }),
+      ),
     );
 
     const rosterByClass = new Map<string, any[]>();
@@ -110,7 +110,7 @@ export async function GET(req: Request) {
           sessionName: row.session_name,
           sessionTime: row.session_time,
         }),
-        row
+        row,
       );
     }
 
@@ -124,7 +124,10 @@ export async function GET(req: Request) {
         })),
       });
 
-      const sessionName = lesson.title || getSubjectField(lesson.subjects, "name") || "Lesson";
+      const baseSessionName =
+        lesson.title || getSubjectField(lesson.subjects, "name") || "Lesson";
+      const sessionType = detectSessionType(lesson.start_time);
+      const sessionName = `${sessionType} - ${baseSessionName}`;
       const roster = rosterRows
         .filter((row) => rosterStudentIds.includes(row.id))
         .map((row) => {
@@ -134,7 +137,7 @@ export async function GET(req: Request) {
               studentId: row.id,
               sessionName,
               sessionTime: lesson.start_time,
-            })
+            }),
           );
 
           return {
@@ -154,7 +157,8 @@ export async function GET(req: Request) {
         classId: lesson.class_id,
         className: buildClassLabel(classesById.get(lesson.class_id || "")),
         subjectId: lesson.subject_id,
-        subjectName: getSubjectField(lesson.subjects, "name") || lesson.title || "Subject",
+        subjectName:
+          getSubjectField(lesson.subjects, "name") || lesson.title || "Subject",
         subjectCode: getSubjectField(lesson.subjects, "code"),
         dayOfWeek: lesson.day_of_week,
         startTime: lesson.start_time,
@@ -168,8 +172,10 @@ export async function GET(req: Request) {
     return jsonWithPrivateCache({ success: true, data });
   } catch (error: unknown) {
     return NextResponse.json(
-      { error: safeErrorMessage(error, "Failed to fetch teacher rollcall data") },
-      { status: 500 }
+      {
+        error: safeErrorMessage(error, "Failed to fetch teacher rollcall data"),
+      },
+      { status: 500 },
     );
   }
 }
@@ -177,7 +183,7 @@ export async function GET(req: Request) {
 export async function POST() {
   return NextResponse.json(
     { error: "Teachers cannot create classes from this endpoint" },
-    { status: 405 }
+    { status: 405 },
   );
 }
 
@@ -187,11 +193,14 @@ function jsonWithPrivateCache(payload: unknown) {
   return response;
 }
 
-async function fetchLessonsByTeacherIds(supabaseAdmin: any, input: {
-  schoolId: string;
-  dayOfWeek: number;
-  teacherIds: string[];
-}) {
+async function fetchLessonsByTeacherIds(
+  supabaseAdmin: any,
+  input: {
+    schoolId: string;
+    dayOfWeek: number;
+    teacherIds: string[];
+  },
+) {
   if (input.teacherIds.length === 0) {
     return [];
   }
@@ -210,7 +219,7 @@ async function fetchLessonsByTeacherIds(supabaseAdmin: any, input: {
         end_time,
         title,
         subjects(name, code)
-      `
+      `,
     )
     .eq("school_id", input.schoolId)
     .eq("day_of_week", input.dayOfWeek)
@@ -221,11 +230,14 @@ async function fetchLessonsByTeacherIds(supabaseAdmin: any, input: {
   return data || [];
 }
 
-async function fetchLessonsByClassIds(supabaseAdmin: any, input: {
-  schoolId: string;
-  dayOfWeek: number;
-  classIds: string[];
-}) {
+async function fetchLessonsByClassIds(
+  supabaseAdmin: any,
+  input: {
+    schoolId: string;
+    dayOfWeek: number;
+    classIds: string[];
+  },
+) {
   if (input.classIds.length === 0) {
     return [];
   }
@@ -244,7 +256,7 @@ async function fetchLessonsByClassIds(supabaseAdmin: any, input: {
         end_time,
         title,
         subjects(name, code)
-      `
+      `,
     )
     .eq("school_id", input.schoolId)
     .eq("day_of_week", input.dayOfWeek)
@@ -268,10 +280,13 @@ function dedupeLessonsById(lessons: any[]) {
   });
 }
 
-async function getStudentsByClassIds(supabaseAdmin: any, input: {
-  schoolId: string;
-  classIds: string[];
-}) {
+async function getStudentsByClassIds(
+  supabaseAdmin: any,
+  input: {
+    schoolId: string;
+    classIds: string[];
+  },
+) {
   if (input.classIds.length === 0) {
     return [];
   }
@@ -286,7 +301,7 @@ async function getStudentsByClassIds(supabaseAdmin: any, input: {
   if (studentsError) throw studentsError;
 
   const profileIds = Array.from(
-    new Set((students || []).map((row: any) => row.profile_id).filter(Boolean))
+    new Set((students || []).map((row: any) => row.profile_id).filter(Boolean)),
   );
 
   let profileById = new Map<string, any>();
@@ -306,11 +321,14 @@ async function getStudentsByClassIds(supabaseAdmin: any, input: {
   }));
 }
 
-async function getAttendanceRows(supabaseAdmin: any, input: {
-  schoolId: string;
-  classIds: string[];
-  date: string;
-}) {
+async function getAttendanceRows(
+  supabaseAdmin: any,
+  input: {
+    schoolId: string;
+    classIds: string[];
+    date: string;
+  },
+) {
   if (input.classIds.length === 0) {
     return [];
   }
@@ -318,7 +336,7 @@ async function getAttendanceRows(supabaseAdmin: any, input: {
   const { data, error } = await supabaseAdmin
     .from("attendance")
     .select(
-      "student_id, class_id, date, attendance_date, status, remarks, notes, session_name, session_time"
+      "student_id, class_id, date, attendance_date, status, remarks, notes, session_name, session_time",
     )
     .eq("school_id", input.schoolId)
     .eq("date", input.date)
@@ -328,7 +346,11 @@ async function getAttendanceRows(supabaseAdmin: any, input: {
   return data || [];
 }
 
-async function getClassesById(supabaseAdmin: any, schoolId: string | null, classIds: string[]) {
+async function getClassesById(
+  supabaseAdmin: any,
+  schoolId: string | null,
+  classIds: string[],
+) {
   if (!schoolId || classIds.length === 0) {
     return new Map<string, any>();
   }
@@ -355,13 +377,16 @@ async function getClassesById(supabaseAdmin: any, schoolId: string | null, class
 }
 
 function buildClassLabel(classRow: any) {
-  const className = typeof classRow?.name === "string" ? classRow.name.trim() : "";
+  const className =
+    typeof classRow?.name === "string" ? classRow.name.trim() : "";
   const gradeName =
     typeof classRow?.grades?.name === "string"
       ? classRow.grades.name.trim()
       : buildGradeLevelLabel(classRow?.grade_level);
 
-  return [gradeName, className].filter(Boolean).join(" - ") || className || "Class";
+  return (
+    [gradeName, className].filter(Boolean).join(" - ") || className || "Class"
+  );
 }
 
 function buildGradeLevelLabel(value: string | number | null | undefined) {
@@ -382,17 +407,31 @@ function buildDisplayName(row?: {
 }
 
 function normalizeAttendanceStatus(status: string | null | undefined) {
-  const normalized = String(status || "").trim().toUpperCase();
+  const normalized = String(status || "")
+    .trim()
+    .toUpperCase();
   return normalized || null;
 }
 
 function getSubjectField(
-  subject: { name?: string | null; code?: string | null } | Array<{ name?: string | null; code?: string | null }> | null | undefined,
-  field: "name" | "code"
+  subject:
+    | { name?: string | null; code?: string | null }
+    | Array<{ name?: string | null; code?: string | null }>
+    | null
+    | undefined,
+  field: "name" | "code",
 ) {
   if (Array.isArray(subject)) {
     return subject[0]?.[field] || null;
   }
 
   return subject?.[field] || null;
+}
+
+function detectSessionType(startTime: string | null | undefined): string {
+  if (!startTime) return "Morning";
+  const hour = parseInt(startTime.split(":")[0] || "0", 10);
+  if (hour < 12) return "Morning";
+  if (hour < 17) return "Afternoon";
+  return "Evening";
 }

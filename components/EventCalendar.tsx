@@ -74,7 +74,7 @@ export default function EventCalendar() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-[22px] bg-white p-4 shadow-sm border border-slate-100 [&_.react-calendar]:w-full [&_.react-calendar]:border-0 [&_.react-calendar]:font-inherit [&_.react-calendar__navigation]:mb-3 [&_.react-calendar__navigation]:items-center [&_.react-calendar__navigation_button]:min-w-0 [&_.react-calendar__navigation_button]:rounded-full [&_.react-calendar__navigation_button]:text-slate-700 [&_.react-calendar__navigation_button]:hover:bg-slate-100 [&_.react-calendar__month-view__weekdays]:text-[11px] [&_.react-calendar__month-view__weekdays]:font-bold [&_.react-calendar__month-view__weekdays]:text-slate-600 [&_.react-calendar__month-view__weekdays_abbr]:no-underline [&_.react-calendar__tile]:rounded-none [&_.react-calendar__tile]:py-3 [&_.react-calendar__tile]:text-sm [&_.react-calendar__tile--now]:bg-[#bde9fb] [&_.react-calendar__tile--active]:bg-[#bde9fb] [&_.react-calendar__tile--active]:text-slate-900]">
+      <div className="rounded-workspace-xl bg-white p-4 shadow-sm border border-slate-100 [&_.react-calendar]:w-full [&_.react-calendar]:border-0 [&_.react-calendar]:font-inherit [&_.react-calendar__navigation]:mb-3 [&_.react-calendar__navigation]:items-center [&_.react-calendar__navigation__button]:min-w-0 [&_.react-calendar__navigation__button]:rounded-full [&_.react-calendar__navigation__button]:text-slate-700 [&_.react-calendar__navigation__button]:hover:bg-slate-100 [&_.react-calendar__month-view__weekdays]:text-[11px] [&_.react-calendar__month-view__weekdays]:font-bold [&_.react-calendar__month-view__weekdays]:text-slate-600 [&_.react-calendar__month-view__weekdays__abbr]:no-underline [&_.react-calendar__tile]:rounded-none [&_.react-calendar__tile]:py-3 [&_.react-calendar__tile]:text-sm [&_.react-calendar__tile--now]:bg-lamaSkyLight [&_.react-calendar__tile--active]:bg-lamaSkyLight [&_.react-calendar__tile--active]:text-slate-900">
         <Calendar
           onChange={onChange}
           value={value}
@@ -91,7 +91,7 @@ export default function EventCalendar() {
       </div>
 
       <div className="flex items-center justify-between mt-4">
-        <h1 className="text-[2rem] font-bold text-slate-900">Events</h1>
+        <h2 className="text-lg font-semibold text-slate-900">Events</h2>
         <button
           type="button"
           onClick={() => router.push("/app/events")}
@@ -115,12 +115,12 @@ export default function EventCalendar() {
           visibleEvents.map((event) => (
             <button
               type="button"
-              className="rounded-2xl border-2 border-slate-100 bg-white px-5 py-5 odd:border-t-[#bde9fb] even:border-t-[#c9c4ff] shadow-sm"
+              className="rounded-workspace-xl border-2 border-slate-100 bg-white px-5 py-5 odd:border-t-lamaSkyLight even:border-t-lamaPurpleLight shadow-workspace-sm"
               key={event.id}
               onClick={() => router.push("/app/events")}
             >
               <div className="flex items-center justify-between gap-3">
-                <h1 className="font-semibold text-slate-600">{event.title}</h1>
+                <h2 className="font-semibold text-slate-600">{event.title}</h2>
                 <span className="text-slate-300 text-xs">
                   {event.start_time || event.end_time
                     ? [event.start_time, event.end_time].filter(Boolean).join(" - ")

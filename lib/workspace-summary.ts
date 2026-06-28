@@ -248,6 +248,11 @@ type FinanceSnapshot = {
 };
 
 async function loadProfileCounts(schoolId: string): Promise<ProfileCounts> {
+  const [studentRows, teacherRows, parentRows] = await Promise.all([
+    countRows("students", schoolId),
+    countRows("teachers", schoolId),
+    countRows("parents", schoolId),
+  ]);
   const roles = ["student", "teacher", "parent", "admin", "principal", "deputy_head", "bursar"];
   const counts: ProfileCounts = {
     total: 0,
@@ -276,6 +281,15 @@ async function loadProfileCounts(schoolId: string): Promise<ProfileCounts> {
     if (role === "parent") counts.parent = value;
     if (role !== "student" && role !== "parent") counts.staff += value;
   }
+
+  counts.student = Math.max(counts.student, studentRows);
+  counts.teacher = Math.max(counts.teacher, teacherRows);
+  counts.parent = Math.max(counts.parent, parentRows);
+  counts.staff = Math.max(counts.staff, counts.teacher);
+  counts.total = Math.max(
+    counts.total,
+    counts.student + counts.parent + counts.staff,
+  );
 
   return counts;
 }

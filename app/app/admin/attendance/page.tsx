@@ -1,8 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, RefreshCw, ClipboardCheck, Users, CalendarCheck, AlertTriangle } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarCheck,
+  ClipboardCheck,
+  Loader2,
+  RefreshCw,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
+
+import { Surface } from "@/components/workspace/Surface";
+import { cn } from "@/lib/utils";
+import { primaryButton } from "@/lib/workspace-design";
 
 type AttendanceSummary = {
   totalStudents?: number;
@@ -38,8 +49,8 @@ export default function AdminAttendancePage() {
       const payload = await res.json();
       if (!res.ok) throw new Error(payload?.error || "Failed to load attendance summary");
       setSummary(payload?.data || payload?.summary || {});
-    } catch (error: any) {
-      toast.error(error?.message || "Failed to load attendance summary");
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Failed to load attendance summary");
       setSummary({});
     } finally {
       setLoading(false);
@@ -68,33 +79,39 @@ export default function AdminAttendancePage() {
           <p className="mt-1 text-sm text-slate-500">Review daily attendance signals across the school.</p>
         </div>
         <button
+          type="button"
           onClick={load}
           disabled={loading}
-          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+          className={primaryButton("disabled:opacity-60")}
         >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
           Refresh
         </button>
       </div>
 
       {loading ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
+        <Surface
+          variant="default"
+          role="status"
+          aria-live="polite"
+          className="grid place-items-center p-10 text-center text-sm text-slate-500"
+        >
           <Loader2 className="mx-auto mb-3 h-6 w-6 animate-spin text-sky-500" />
           Loading attendance summary...
-        </div>
+        </Surface>
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {cards.map((card) => (
-              <div key={card.label} className="rounded-2xl border border-slate-200 bg-white p-5">
+              <Surface key={card.label} variant="default" className="p-5" as="div">
                 <card.icon className="h-5 w-5 text-sky-600" />
                 <p className="mt-4 text-2xl font-bold text-slate-900">{card.value}</p>
                 <p className="mt-1 text-sm text-slate-500">{card.label}</p>
-              </div>
+              </Surface>
             ))}
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+          <Surface variant="default" className="p-5" as="div">
             <h2 className="font-semibold text-slate-900">Recent Sessions</h2>
             <div className="mt-4 divide-y divide-slate-100">
               {resolveRecentSessions(summary).length === 0 ? (
@@ -113,7 +130,7 @@ export default function AdminAttendancePage() {
                 ))
               )}
             </div>
-          </div>
+          </Surface>
         </>
       )}
     </div>

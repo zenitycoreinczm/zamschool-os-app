@@ -16,8 +16,8 @@ import { normalizeRole } from "@/lib/roles";
 import {
   getCachedActorSnapshot,
   setCachedActorSnapshot,
-} from "@/lib/redis-role-cache";
-import { touchActiveSession } from "@/lib/redis-session";
+} from "@/lib/redis/role-cache";
+import { touchActiveSession } from "@/lib/redis/session";
 
 export {
   buildActorContext,
@@ -166,6 +166,7 @@ export async function requireAdminContext(req?: Request) {
         "HR_ADMIN",
         "ICT_ADMIN",
         "DISCIPLINE_ADMIN",
+        "REGISTRAR",
         "SUPER_ADMIN",
       ],
       requireSchool: true,
@@ -249,10 +250,15 @@ export async function requireParentContext(req?: Request) {
   );
 }
 
+/**
+ * Payments context for dedicated finance staff, plus PRINCIPAL/ADMIN so the
+ * head teacher can oversee payments, fees, and summaries. Feature-level
+ * permissions (requireFeatureAccess) still gate the actual read/write.
+ */
 export async function requirePaymentsContext(req?: Request) {
   return requireActorContext(
     {
-      allowedRoles: ["PAYMENTS", "BURSAR"],
+      allowedRoles: ["PAYMENTS", "BURSAR", "PRINCIPAL", "ADMIN"],
       requireSchool: true,
     },
     req,
@@ -363,11 +369,15 @@ export async function requireFinancialReadContext(req?: Request) {
   );
 }
 
-/** Bursar-only write gate for finance mutations (SUPER_ADMIN bypasses at feature layer). */
+/**
+ * Write gate for finance mutations. Dedicated to BURSAR, but PRINCIPAL and
+ * ADMIN are allowed so the head teacher can manage finance entries.
+ * Feature-level permissions (requireFeatureAccess) still gate the actual write.
+ */
 export async function requireFinancialWriteContext(req?: Request) {
   return requireActorContext(
     {
-      allowedRoles: ["BURSAR", "SUPER_ADMIN"],
+      allowedRoles: ["BURSAR", "SUPER_ADMIN", "PRINCIPAL", "ADMIN"],
       requireSchool: true,
     },
     req,

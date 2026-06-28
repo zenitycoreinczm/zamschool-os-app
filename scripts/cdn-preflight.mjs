@@ -7,14 +7,16 @@ import { importTsModule } from "./test-ts-module.mjs";
 
 const { validateR2CdnConfig, isR2CdnConfigured } = await importTsModule(
   "../lib/r2-config.ts",
-  import.meta.url
+  import.meta.url,
 );
 
 const validation = validateR2CdnConfig();
 
 console.log("=== ZamSchool CDN preflight ===\n");
 console.log(`Delivery mode: ${validation.deliveryMode}`);
-console.log(`R2 CDN configured: ${isR2CdnConfigured() ? "yes" : "no (app proxy fallback)"}\n`);
+console.log(
+  `R2 CDN configured: ${isR2CdnConfigured() ? "yes" : "no (app proxy fallback)"}\n`,
+);
 
 if (validation.issues.length) {
   console.log("Issues:");
@@ -31,7 +33,7 @@ if (!validation.ok) {
 
 if (validation.deliveryMode === "proxy") {
   console.warn(
-    "Warning: R2_PUBLIC_URL is unset. Production should use pub-*.r2.dev (see docs/CDN_AND_R2.md)."
+    "Warning: R2_PUBLIC_URL is unset. Production should use pub-*.r2.dev (see workers/gateway/wrangler.toml comments and next.config.ts image remotePatterns).",
   );
 }
 

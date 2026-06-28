@@ -9,6 +9,9 @@ import {
   safeErrorMessage,
 } from "@/lib/server-guards";
 import { requireAdminContext } from "@/lib/server-auth";
+import { auditDomainWrite } from "@/lib/audit-domain";
+import { enforceRouteAccess } from "@/lib/route-enforcement";
+import { invalidateByTag } from "@/lib/enhanced-cache";
 
 const createTermSchema = z.object({
   name: z.string().min(1),
@@ -43,13 +46,22 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to fetch terms") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to fetch terms") },
+      { status: 500 },
+    );
   }
 }
 
 export async function POST(req: Request) {
   try {
-    const access = await requireAdminContext(req);
+    const access = await enforceRouteAccess(req, {
+      allowedRoles: ["ACADEMIC_ADMIN", "ADMIN", "SUPER_ADMIN"],
+      feature: "terms",
+      featureAction: "create",
+      domain: "academic",
+      domainAction: "create",
+    });
     if (!access.ok) return access.response;
     const { schoolId } = access.context;
     const rate = await applyRateLimit({
@@ -60,18 +72,24 @@ export async function POST(req: Request) {
     if (!rate.allowed) {
       return NextResponse.json(
         { error: "Too many requests. Please try again shortly." },
-        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } }
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
       );
     }
 
     const body = await parseJsonWithSchema(req, createTermSchema);
     const year = await fetchAcademicYear(body.academicYearId, schoolId);
     if (!year) {
-      return NextResponse.json({ error: "Academic year not found in this school" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Academic year not found in this school" },
+        { status: 404 },
+      );
     }
 
     if (body.isActive) {
-      await supabaseAdmin.from("terms").update({ is_active: false }).eq("school_id", schoolId);
+      await supabaseAdmin
+        .from("terms")
+        .update({ is_active: false })
+        .eq("school_id", schoolId);
     }
 
     const { data, error } = await supabaseAdmin
@@ -89,15 +107,35 @@ export async function POST(req: Request) {
 
     if (error) throw error;
 
+    await auditDomainWrite({
+      schoolId,
+      userId: access.context.userId,
+      action: "terms.create",
+      entityType: "term",
+      entityId: data.id,
+      newData: data,
+      ipAddress: getClientIp(req),
+    });
+
+    await invalidateByTag("dashboard");
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to create term") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to create term") },
+      { status: 500 },
+    );
   }
 }
 
 export async function PUT(req: Request) {
   try {
-    const access = await requireAdminContext(req);
+    const access = await enforceRouteAccess(req, {
+      allowedRoles: ["ACADEMIC_ADMIN", "ADMIN", "SUPER_ADMIN"],
+      feature: "terms",
+      featureAction: "update",
+      domain: "academic",
+      domainAction: "update",
+    });
     if (!access.ok) return access.response;
     const { schoolId } = access.context;
     const rate = await applyRateLimit({
@@ -108,25 +146,34 @@ export async function PUT(req: Request) {
     if (!rate.allowed) {
       return NextResponse.json(
         { error: "Too many requests. Please try again shortly." },
-        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } }
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
       );
     }
 
     const body = await parseJsonWithSchema(req, updateTermSchema);
     const existing = await fetchTerm(body.id, schoolId);
     if (!existing) {
-      return NextResponse.json({ error: "Term not found in this school" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Term not found in this school" },
+        { status: 404 },
+      );
     }
 
     if (body.academicYearId) {
       const year = await fetchAcademicYear(body.academicYearId, schoolId);
       if (!year) {
-        return NextResponse.json({ error: "Academic year not found in this school" }, { status: 404 });
+        return NextResponse.json(
+          { error: "Academic year not found in this school" },
+          { status: 404 },
+        );
       }
     }
 
     if (body.isActive) {
-      await supabaseAdmin.from("terms").update({ is_active: false }).eq("school_id", schoolId);
+      await supabaseAdmin
+        .from("terms")
+        .update({ is_active: false })
+        .eq("school_id", schoolId);
     }
 
     const payload: Record<string, unknown> = {};
@@ -146,22 +193,46 @@ export async function PUT(req: Request) {
 
     if (error) throw error;
 
+    await auditDomainWrite({
+      schoolId,
+      userId: access.context.userId,
+      action: "terms.update",
+      entityType: "term",
+      entityId: body.id,
+      oldData: existing,
+      newData: data,
+      ipAddress: getClientIp(req),
+    });
+
+    await invalidateByTag("dashboard");
     return NextResponse.json({ success: true, data });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to update term") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to update term") },
+      { status: 500 },
+    );
   }
 }
 
 export async function DELETE(req: Request) {
   try {
-    const access = await requireAdminContext(req);
+    const access = await enforceRouteAccess(req, {
+      allowedRoles: ["ACADEMIC_ADMIN", "ADMIN", "SUPER_ADMIN"],
+      feature: "terms",
+      featureAction: "delete",
+      domain: "academic",
+      domainAction: "delete",
+    });
     if (!access.ok) return access.response;
     const { schoolId } = access.context;
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 
     if (!id) {
-      return NextResponse.json({ error: "Term ID is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Term ID is required" },
+        { status: 400 },
+      );
     }
 
     const { error } = await supabaseAdmin
@@ -172,9 +243,22 @@ export async function DELETE(req: Request) {
 
     if (error) throw error;
 
+    await auditDomainWrite({
+      schoolId,
+      userId: access.context.userId,
+      action: "terms.delete",
+      entityType: "term",
+      entityId: id,
+      ipAddress: getClientIp(req),
+    });
+
+    await invalidateByTag("dashboard");
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to delete term") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to delete term") },
+      { status: 500 },
+    );
   }
 }
 

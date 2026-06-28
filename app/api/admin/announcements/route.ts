@@ -4,9 +4,15 @@ import {
   loadSchoolAnnouncements,
 } from "@/lib/announcements-server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { READ_MOSTLY_PRIVATE_CACHE } from "@/lib/teacher-route-common";
+import { applyEdgeCacheHeaders } from "@/lib/edge-cache";
 import { z } from "zod";
-import { applyRateLimit, buildActorRateLimitKey, getClientIp, parseJsonWithSchema, safeErrorMessage } from "@/lib/server-guards";
+import {
+  applyRateLimit,
+  getClientIp,
+  parseJsonWithSchema,
+  safeErrorMessage,
+} from "@/lib/server-guards";
+import { tenantActorRateLimitKey } from "@/lib/tenant-context";
 import { requireActorContext, requireAdminContext } from "@/lib/server-auth";
 import { auditDomainWrite } from "@/lib/audit-domain";
 import { encodeTargetAudience } from "@/lib/target-audience";
@@ -27,6 +33,22 @@ const createAnnouncementSchema = z.object({
   expiresAt: z.string().optional().nullable(),
 });
 
+type AnnouncementRow = {
+  id?: string;
+  school_id?: string;
+  title?: string | null;
+  content?: string | null;
+  target_role?: string | null;
+  target_audience?: string | null;
+  audience?: string | null;
+  target_class_id?: string | null;
+  is_pinned?: boolean | null;
+  expires_at?: string | null;
+  created_by?: string | null;
+  created_at?: string | null;
+  [key: string]: unknown;
+};
+
 const updateAnnouncementSchema = z.object({
   id: z.string().min(1),
   title: z.string().min(1).optional(),
@@ -41,15 +63,29 @@ export async function GET(req: Request) {
   try {
     const access = await requireAdminContext(req);
     if (!access.ok) return access.response;
+    const perm = await requireFeatureAccess(
+      access.context,
+      "announcements",
+      "read",
+    );
+    if (!perm.ok) return perm.response;
     const { schoolId } = access.context;
     if (!schoolId) {
-      return NextResponse.json({ error: "No school linked to this account" }, { status: 403 });
+      return NextResponse.json(
+        { error: "No school linked to this account" },
+        { status: 403 },
+      );
     }
     const { searchParams } = new URL(req.url);
-    const targetRole = normalizeTargetRoleForResponse(searchParams.get("targetRole"));
+    const targetRole = normalizeTargetRoleForResponse(
+      searchParams.get("targetRole"),
+    );
     const targetClassId = searchParams.get("targetClassId");
 
-    const limit = Math.min(Math.max(Number(searchParams.get("limit") || 100), 1), 100);
+    const limit = Math.min(
+      Math.max(Number(searchParams.get("limit") || 100), 1),
+      100,
+    );
     const rows = await loadSchoolAnnouncements(schoolId, limit);
 
     const normalized = normalizeAnnouncementRows(rows).filter((row) => {
@@ -63,11 +99,15 @@ export async function GET(req: Request) {
       return left.is_pinned ? -1 : 1;
     });
 
-    const response = NextResponse.json({ success: true, data: normalized });
-    response.headers.set("Cache-Control", READ_MOSTLY_PRIVATE_CACHE);
-    return response;
+    return applyEdgeCacheHeaders(
+      NextResponse.json({ success: true, data: normalized }),
+      "announcements",
+    );
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to fetch announcements") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to fetch announcements") },
+      { status: 500 },
+    );
   }
 }
 
@@ -78,31 +118,46 @@ export async function POST(req: Request) {
         allowedRoles: ["PRINCIPAL", "ADMIN"],
         requireSchool: true,
       },
-      req
+      req,
     );
     if (!access.ok) return access.response;
-    const perm = await requireFeatureAccess(access.context, "announcements", "create");
+    const perm = await requireFeatureAccess(
+      access.context,
+      "announcements",
+      "create",
+    );
     if (!perm.ok) return perm.response;
     const { schoolId, userId } = access.context;
     if (!schoolId) {
-      return NextResponse.json({ error: "No school linked to this account" }, { status: 403 });
+      return NextResponse.json(
+        { error: "No school linked to this account" },
+        { status: 403 },
+      );
     }
     const ip = getClientIp(req);
     const rate = await applyRateLimit({
-      key: buildActorRateLimitKey("admin-announcements", req, userId),
+      key: tenantActorRateLimitKey({
+        scope: "admin-announcements",
+        schoolId,
+        req,
+        userId,
+      }),
       limit: 40,
       windowMs: 60_000,
     });
     if (!rate.allowed) {
       return NextResponse.json(
         { error: "Too many requests. Please try again shortly." },
-        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } }
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
       );
     }
 
     const body = await parseJsonWithSchema(req, createAnnouncementSchema);
     const payload = buildAnnouncementPayload({ schoolId, userId, body });
-    const data = await safeInsertWithMissingColumnRetry("announcements", payload);
+    const data = await safeInsertWithMissingColumnRetry(
+      "announcements",
+      payload,
+    );
 
     await invalidateSchoolAnnouncementsCache();
     await refreshSchoolReadModels(schoolId);
@@ -116,9 +171,15 @@ export async function POST(req: Request) {
       ipAddress: ip,
     });
 
-    return NextResponse.json({ success: true, data: normalizeAnnouncementRow(data) });
+    return NextResponse.json({
+      success: true,
+      data: normalizeAnnouncementRow(data),
+    });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to create announcement") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to create announcement") },
+      { status: 500 },
+    );
   }
 }
 
@@ -126,32 +187,71 @@ export async function PUT(req: Request) {
   try {
     const access = await requireAdminContext(req);
     if (!access.ok) return access.response;
+    const perm = await requireFeatureAccess(
+      access.context,
+      "announcements",
+      "update",
+    );
+    if (!perm.ok) return perm.response;
     const { schoolId, userId } = access.context;
     if (!schoolId) {
-      return NextResponse.json({ error: "No school linked to this account" }, { status: 403 });
+      return NextResponse.json(
+        { error: "No school linked to this account" },
+        { status: 403 },
+      );
     }
     const ip = getClientIp(req);
     const rate = await applyRateLimit({
-      key: buildActorRateLimitKey("admin-announcements", req, userId),
+      key: tenantActorRateLimitKey({
+        scope: "admin-announcements",
+        schoolId,
+        req,
+        userId,
+      }),
       limit: 40,
       windowMs: 60_000,
     });
     if (!rate.allowed) {
       return NextResponse.json(
         { error: "Too many requests. Please try again shortly." },
-        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } }
+        { status: 429, headers: { "Retry-After": String(rate.retryAfterSec) } },
       );
     }
 
     const body = await parseJsonWithSchema(req, updateAnnouncementSchema);
-    const payload = buildAnnouncementPayload({ schoolId, userId: null, body, includeRequired: false });
-    const data = await safeUpdateWithMissingColumnRetry("announcements", body.id, schoolId, payload);
+    const payload = buildAnnouncementPayload({
+      schoolId,
+      userId: null,
+      body,
+      includeRequired: false,
+    });
+    const data = await safeUpdateWithMissingColumnRetry(
+      "announcements",
+      body.id,
+      schoolId,
+      payload,
+    );
 
     await invalidateSchoolAnnouncementsCache();
+    await auditDomainWrite({
+      schoolId,
+      userId,
+      action: "announcement.updated",
+      entityType: "announcement",
+      entityId: body.id,
+      newData: payload,
+      ipAddress: ip,
+    });
 
-    return NextResponse.json({ success: true, data: normalizeAnnouncementRow(data) });
+    return NextResponse.json({
+      success: true,
+      data: normalizeAnnouncementRow(data),
+    });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to update announcement") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to update announcement") },
+      { status: 500 },
+    );
   }
 }
 
@@ -159,15 +259,27 @@ export async function DELETE(req: Request) {
   try {
     const access = await requireAdminContext(req);
     if (!access.ok) return access.response;
+    const perm = await requireFeatureAccess(
+      access.context,
+      "announcements",
+      "delete",
+    );
+    if (!perm.ok) return perm.response;
     const { schoolId } = access.context;
     if (!schoolId) {
-      return NextResponse.json({ error: "No school linked to this account" }, { status: 403 });
+      return NextResponse.json(
+        { error: "No school linked to this account" },
+        { status: 403 },
+      );
     }
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 
     if (!id) {
-      return NextResponse.json({ error: "Announcement ID is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Announcement ID is required" },
+        { status: 400 },
+      );
     }
 
     const { error } = await supabaseAdmin
@@ -179,24 +291,44 @@ export async function DELETE(req: Request) {
     if (error) throw error;
 
     await invalidateSchoolAnnouncementsCache();
+    const ip = getClientIp(req);
+    await auditDomainWrite({
+      schoolId,
+      userId: access.context.userId,
+      action: "announcement.deleted",
+      entityType: "announcement",
+      entityId: id,
+      ipAddress: ip,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to delete announcement") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to delete announcement") },
+      { status: 500 },
+    );
   }
 }
 
 function buildAnnouncementPayload(input: {
   schoolId: string;
   userId: string | null;
-  body: z.infer<typeof createAnnouncementSchema> | z.infer<typeof updateAnnouncementSchema>;
+  body:
+    | z.infer<typeof createAnnouncementSchema>
+    | z.infer<typeof updateAnnouncementSchema>;
   includeRequired?: boolean;
 }) {
   const includeRequired = input.includeRequired !== false;
   return compactRecord({
     ...(includeRequired ? { school_id: input.schoolId } : {}),
-    title: "title" in input.body && input.body.title !== undefined ? input.body.title.trim() : undefined,
-    content: "content" in input.body && input.body.content !== undefined ? input.body.content.trim() : undefined,
+    title:
+      "title" in input.body && input.body.title !== undefined
+        ? input.body.title.trim()
+        : undefined,
+    content:
+      "content" in input.body && input.body.content !== undefined
+        ? input.body.content.trim()
+        : undefined,
     target_role:
       "targetRole" in input.body
         ? normalizeTargetRoleForStorage(input.body.targetRole)
@@ -204,14 +336,21 @@ function buildAnnouncementPayload(input: {
     target_audience:
       "targetRole" in input.body || "targetClassId" in input.body
         ? encodeTargetAudience({
-            targetRole: "targetRole" in input.body ? input.body.targetRole : null,
-            targetClassId: "targetClassId" in input.body ? input.body.targetClassId : null,
+            targetRole:
+              "targetRole" in input.body ? input.body.targetRole : null,
+            targetClassId:
+              "targetClassId" in input.body ? input.body.targetClassId : null,
           })
         : undefined,
-    target_class_id: "targetClassId" in input.body ? input.body.targetClassId || null : undefined,
+    target_class_id:
+      "targetClassId" in input.body
+        ? input.body.targetClassId || null
+        : undefined,
     created_by: includeRequired ? input.userId : undefined,
-    is_pinned: "isPinned" in input.body ? Boolean(input.body.isPinned) : undefined,
-    expires_at: "expiresAt" in input.body ? input.body.expiresAt || null : undefined,
+    is_pinned:
+      "isPinned" in input.body ? Boolean(input.body.isPinned) : undefined,
+    expires_at:
+      "expiresAt" in input.body ? input.body.expiresAt || null : undefined,
     audience:
       "targetRole" in input.body
         ? normalizeAudienceForStorage(input.body.targetRole)
@@ -219,18 +358,22 @@ function buildAnnouncementPayload(input: {
   });
 }
 
-function normalizeAnnouncementRows(rows: any[]) {
+function normalizeAnnouncementRows(rows: AnnouncementRow[]) {
   return rows.map(normalizeAnnouncementRow);
 }
 
-function normalizeAnnouncementRow(row: any) {
+function normalizeAnnouncementRow(row: AnnouncementRow): AnnouncementRow {
   return {
     ...row,
-    target_audience: row?.target_audience ?? encodeTargetAudience({
-      targetRole: row?.target_role ?? row?.audience,
-      targetClassId: row?.target_class_id,
-    }),
-    target_role: normalizeTargetRoleForResponse(row?.target_role ?? row?.target_audience ?? row?.audience),
+    target_audience:
+      row?.target_audience ??
+      encodeTargetAudience({
+        targetRole: row?.target_role ?? row?.audience,
+        targetClassId: row?.target_class_id,
+      }),
+    target_role: normalizeTargetRoleForResponse(
+      row?.target_role ?? row?.target_audience ?? row?.audience,
+    ),
     target_class_id: row?.target_class_id ?? null,
     is_pinned: row?.is_pinned === true,
     expires_at: row?.expires_at ?? null,
@@ -239,16 +382,25 @@ function normalizeAnnouncementRow(row: any) {
 
 function extractMissingColumn(message?: string) {
   if (!message) return null;
-  const match = message.match(/column ([^.]+\.)?([a-zA-Z0-9_]+) does not exist/i);
+  const match = message.match(
+    /column ([^.]+\.)?([a-zA-Z0-9_]+) does not exist/i,
+  );
   if (match?.[2]) return match[2];
   const missing = message.match(/Could not find the '([^']+)' column/i);
   return missing?.[1] || null;
 }
 
-async function safeInsertWithMissingColumnRetry(table: string, payload: Record<string, any>) {
+async function safeInsertWithMissingColumnRetry(
+  table: string,
+  payload: Record<string, unknown>,
+) {
   let working = { ...payload };
   for (let index = 0; index < 10; index += 1) {
-    const result = await supabaseAdmin.from(table).insert(working).select().single();
+    const result = await supabaseAdmin
+      .from(table)
+      .insert(working)
+      .select()
+      .single();
     if (!result.error) return result.data;
 
     const missingColumn = extractMissingColumn(result.error.message);
@@ -259,7 +411,12 @@ async function safeInsertWithMissingColumnRetry(table: string, payload: Record<s
   throw new Error(`Failed to insert ${table}`);
 }
 
-async function safeUpdateWithMissingColumnRetry(table: string, id: string, schoolId: string, payload: Record<string, any>) {
+async function safeUpdateWithMissingColumnRetry(
+  table: string,
+  id: string,
+  schoolId: string,
+  payload: Record<string, unknown>,
+) {
   let working = { ...payload };
   for (let index = 0; index < 10; index += 1) {
     const result = await supabaseAdmin
@@ -280,8 +437,8 @@ async function safeUpdateWithMissingColumnRetry(table: string, id: string, schoo
   throw new Error(`Failed to update ${table}`);
 }
 
-function compactRecord(record: Record<string, any>) {
+function compactRecord(record: Record<string, unknown>) {
   return Object.fromEntries(
-    Object.entries(record).filter(([, value]) => value !== undefined)
+    Object.entries(record).filter(([, value]) => value !== undefined),
   );
 }

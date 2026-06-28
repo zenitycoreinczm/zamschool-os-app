@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { adminApiJson } from "@/lib/admin-browser-api";
+import { Surface } from "@/components/workspace/Surface";
 
 type GradeRow = {
   id: string;
@@ -160,10 +161,16 @@ export default function AdminGradingScalesPage() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-10 flex items-center justify-center gap-3">
-        <Loader2 className="w-5 h-5 animate-spin text-sky-600" />
-        <span className="text-sm text-slate-500">Loading grades and scales...</span>
-      </div>
+      <Surface
+        variant="default"
+        role="status"
+        aria-live="polite"
+        className="flex items-center justify-center gap-3 p-10 text-sm text-slate-500"
+        as="div"
+      >
+        <Loader2 className="h-5 w-5 animate-spin text-sky-600" />
+        <span>Loading grades and scales...</span>
+      </Surface>
     );
   }
 
@@ -175,7 +182,7 @@ export default function AdminGradingScalesPage() {
       </div>
 
       <div className="grid xl:grid-cols-2 gap-6">
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
+        <Surface variant="default" className="space-y-4 p-5">
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-semibold text-slate-900">Grades</h2>
             <span className="text-xs text-slate-500">{grades.length} total</span>
@@ -196,11 +203,12 @@ export default function AdminGradingScalesPage() {
           </div>
 
           <button
+            type="button"
             onClick={addGrade}
             disabled={savingGrade}
-            className="inline-flex items-center gap-2 rounded-xl bg-sky-500 text-white px-4 py-2.5 text-sm font-semibold hover:bg-sky-400 disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-sky-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 disabled:opacity-60"
           >
-            {savingGrade ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+            {savingGrade ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             Add Grade
           </button>
 
@@ -227,11 +235,12 @@ export default function AdminGradingScalesPage() {
                       <td className="px-3 py-3 text-slate-600">{grade.name || `Grade ${grade.level}`}</td>
                       <td className="px-3 py-3">
                         <button
+                          type="button"
                           onClick={() => deleteGrade(grade.id)}
-                          className="w-8 h-8 rounded-lg bg-red-50 text-red-600 grid place-items-center hover:bg-red-100"
+                          className="grid h-8 w-8 place-items-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200"
                           aria-label={`Delete grade ${grade.level}`}
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </td>
                     </tr>
@@ -240,9 +249,9 @@ export default function AdminGradingScalesPage() {
               </tbody>
             </table>
           </div>
-        </section>
+        </Surface>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
+        <Surface variant="default" className="space-y-4 p-5">
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-semibold text-slate-900">Grading Scales</h2>
             <span className="text-xs text-slate-500">{scales.length} total</span>
@@ -280,11 +289,12 @@ export default function AdminGradingScalesPage() {
           />
 
           <button
+            type="button"
             onClick={addScale}
             disabled={savingScale}
-            className="inline-flex items-center gap-2 rounded-xl bg-sky-500 text-white px-4 py-2.5 text-sm font-semibold hover:bg-sky-400 disabled:opacity-60"
+            className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-sky-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 disabled:opacity-60"
           >
-            {savingScale ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+            {savingScale ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             Add Scale
           </button>
 
@@ -315,11 +325,12 @@ export default function AdminGradingScalesPage() {
                       <td className="px-3 py-3 text-slate-600">{scale.name}</td>
                       <td className="px-3 py-3">
                         <button
+                          type="button"
                           onClick={() => deleteScale(scale.id)}
-                          className="w-8 h-8 rounded-lg bg-red-50 text-red-600 grid place-items-center hover:bg-red-100"
+                          className="grid h-8 w-8 place-items-center rounded-lg bg-red-50 text-red-600 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200"
                           aria-label={`Delete scale ${scale.name}`}
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </td>
                     </tr>
@@ -328,7 +339,7 @@ export default function AdminGradingScalesPage() {
               </tbody>
             </table>
           </div>
-        </section>
+        </Surface>
       </div>
     </div>
   );

@@ -8,9 +8,14 @@ export async function GET(req: Request) {
   try {
     const access = await requireAdminContext(req);
     if (!access.ok) return access.response;
+    const perm = await requireFeatureAccess(access.context, "audit", "read");
+    if (!perm.ok) return perm.response;
     const { schoolId } = access.context;
     if (!schoolId) {
-      return NextResponse.json({ error: "No school linked to this admin account" }, { status: 403 });
+      return NextResponse.json(
+        { error: "No school linked to this admin account" },
+        { status: 403 },
+      );
     }
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get("userId");
@@ -20,7 +25,10 @@ export async function GET(req: Request) {
     const endDate = searchParams.get("endDate");
     const limit = parseInt(searchParams.get("limit") || "100", 10);
 
-    let query = supabaseAdmin.from("audit_logs").select("*").eq("school_id", schoolId);
+    let query = supabaseAdmin
+      .from("audit_logs")
+      .select("*")
+      .eq("school_id", schoolId);
 
     if (userId) {
       query = query.eq("user_id", userId);
@@ -50,10 +58,24 @@ export async function GET(req: Request) {
 
     const rows = data || [];
     const userIds = Array.from(
-      new Set(rows.map((row) => row.user_id).filter((id): id is string => typeof id === "string" && id.length > 0))
+      new Set(
+        rows
+          .map((row) => row.user_id)
+          .filter(
+            (id): id is string => typeof id === "string" && id.length > 0,
+          ),
+      ),
     );
 
-    let profileById: Record<string, { first_name?: string | null; last_name?: string | null; email?: string | null; role?: string | null }> = {};
+    let profileById: Record<
+      string,
+      {
+        first_name?: string | null;
+        last_name?: string | null;
+        email?: string | null;
+        role?: string | null;
+      }
+    > = {};
 
     if (userIds.length > 0) {
       const { data: profiles, error: profilesError } = await supabaseAdmin
@@ -64,7 +86,9 @@ export async function GET(req: Request) {
 
       if (profilesError) throw profilesError;
 
-      profileById = Object.fromEntries((profiles || []).map((profile) => [profile.id, profile]));
+      profileById = Object.fromEntries(
+        (profiles || []).map((profile) => [profile.id, profile]),
+      );
     }
 
     const enriched = rows.map((row) => ({
@@ -74,6 +98,9 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ success: true, data: enriched });
   } catch (error: unknown) {
-    return NextResponse.json({ error: safeErrorMessage(error, "Failed to fetch audit logs") }, { status: 500 });
+    return NextResponse.json(
+      { error: safeErrorMessage(error, "Failed to fetch audit logs") },
+      { status: 500 },
+    );
   }
 }

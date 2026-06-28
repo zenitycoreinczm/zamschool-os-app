@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { requireAdminContext, requireTeacherContext } from "@/lib/server-auth";
+import { requireFeatureAccess } from "@/lib/feature-permissions";
 import {
   parseJsonWithSchema,
   safeErrorMessage,
@@ -15,6 +16,7 @@ import {
   buildDisciplineRecordNotificationPayloads,
   buildDisciplineStatusChangeNotificationPayloads,
 } from "@/lib/discipline-notifications";
+import { authorizeWorkflowTransition } from "@/lib/workflow-states";
 
 const createRecordSchema = z.object({
   studentId: z.string().uuid(),
@@ -144,6 +146,12 @@ export async function POST(req: Request) {
   try {
     const access = await requireAdminContext(req);
     if (!access.ok) return access.response;
+    const perm = await requireFeatureAccess(
+      access.context,
+      "discipline",
+      "create",
+    );
+    if (!perm.ok) return perm.response;
     const { userId, schoolId } = access.context;
     if (!schoolId) {
       return NextResponse.json({ error: "No school linked" }, { status: 403 });
@@ -253,6 +261,12 @@ export async function PUT(req: Request) {
   try {
     const access = await requireAdminContext(req);
     if (!access.ok) return access.response;
+    const perm = await requireFeatureAccess(
+      access.context,
+      "discipline",
+      "update",
+    );
+    if (!perm.ok) return perm.response;
     const { userId, schoolId } = access.context;
     if (!schoolId) {
       return NextResponse.json({ error: "No school linked" }, { status: 403 });
@@ -273,7 +287,34 @@ export async function PUT(req: Request) {
       updatePayload.incident_location = updates.incidentLocation;
     if (updates.severity !== undefined)
       updatePayload.severity = updates.severity;
-    if (updates.status !== undefined) updatePayload.status = updates.status;
+    if (updates.status !== undefined) {
+      // Validate discipline workflow transition
+      const { data: existing } = await supabaseAdmin
+        .from("discipline_records")
+        .select("status")
+        .eq("id", id)
+        .eq("school_id", schoolId)
+        .maybeSingle();
+
+      const currentStatus = String(existing?.status || "open").toLowerCase();
+      const newStatus = updates.status.toLowerCase();
+
+      if (currentStatus !== newStatus) {
+        const auth = authorizeWorkflowTransition(
+          "discipline",
+          currentStatus,
+          newStatus,
+          access.context.role,
+        );
+        if (!auth.allowed) {
+          return NextResponse.json(
+            { error: auth.reason || "Invalid discipline status transition" },
+            { status: 403 },
+          );
+        }
+      }
+      updatePayload.status = updates.status;
+    }
     if (updates.categoryId !== undefined)
       updatePayload.category_id = updates.categoryId;
     if (updates.resolutionNotes !== undefined)

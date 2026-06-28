@@ -83,6 +83,18 @@ function buildDestination(user: User, profile: ProfileSnapshot, redirectTo?: str
     return FIRST_LOGIN_PATH;
   }
 
+  // Profile row never landed (registration step 3 was abandoned / 403'd).
+  // Treat a verified user whose Supabase user_metadata.role is PRINCIPAL as
+  // a half-finished registration and route them back to step 3.
+  const metadataRole = (user.user_metadata as { role?: string } | undefined)?.role;
+  if (
+    !profile &&
+    Boolean(user.email_confirmed_at) &&
+    (metadataRole === "PRINCIPAL" || metadataRole === "ADMIN")
+  ) {
+    return `/register?resume=school&email=${encodeURIComponent(user.email ?? "")}&userId=${encodeURIComponent(user.id ?? "")}`;
+  }
+
   return resolveOnboardingPath({
     role: profile?.role,
     emailVerified: Boolean(user.email_confirmed_at),
@@ -97,7 +109,7 @@ export default function LoginPage() {
     <Suspense fallback={
       <AuthPageShell>
         <section className="w-full max-w-[440px]">
-          <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_24px_70px_rgba(15,23,42,0.12)]">
+          <div className="rounded-workspace-xl border border-slate-200 bg-white p-6 shadow-[0_24px_70px_rgba(15,23,42,0.12)]">
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-sky-600" />
             </div>
@@ -393,7 +405,7 @@ function LoginContent() {
             ) : null}
 
             {authMessage && (
-              <div className="mb-6 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              <div className="mb-6 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700" role="alert">
                 <AlertCircle className="h-5 w-5 shrink-0" />
                 <span>{authMessage}</span>
               </div>
@@ -423,7 +435,7 @@ function LoginContent() {
                     type="button"
                     onClick={continueToWorkspace}
                     disabled={continuingSession || switchingAccount}
-                    className="flex-1 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-70"
+                    className="flex-1 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 disabled:opacity-70"
                   >
                     {continuingSession ? "Opening workspace..." : "Continue to workspace"}
                   </button>
@@ -431,7 +443,7 @@ function LoginContent() {
                     type="button"
                     onClick={handleUseAnotherAccount}
                     disabled={continuingSession || switchingAccount}
-                    className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-70"
+                    className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 disabled:opacity-70"
                   >
                     {switchingAccount ? "Clearing session..." : "Use another account"}
                   </button>
@@ -474,7 +486,7 @@ function LoginContent() {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-xl text-slate-400 transition-colors hover:bg-white hover:text-slate-700"
+                    className="absolute right-3 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-xl text-slate-400 transition-colors hover:bg-white hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200"
                     aria-label={showPassword ? "Hide password" : "Show password"}
                   >
                     {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
@@ -486,7 +498,7 @@ function LoginContent() {
               <button
                 type="submit"
                 disabled={loading || switchingAccount || cooldownState.active}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 py-3 text-base font-bold text-white shadow-lg shadow-slate-900/20 transition-all hover:-translate-y-0.5 hover:bg-slate-800 disabled:translate-y-0 disabled:opacity-70"
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 py-3 text-base font-bold text-white shadow-lg shadow-slate-900/20 transition-all hover:-translate-y-0.5 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 disabled:translate-y-0 disabled:opacity-70"
               >
                 {loading ? (
                   <>

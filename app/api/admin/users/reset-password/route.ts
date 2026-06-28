@@ -7,6 +7,7 @@ import {
   shouldRequireFirstLoginPasswordChange,
 } from "../../../../../lib/account-state";
 import { requireAdminContext } from "../../../../../lib/server-auth";
+import { requireFeatureAccess } from "@/lib/feature-permissions";
 import {
   applyRateLimit,
   getClientIp,
@@ -16,6 +17,8 @@ import {
 import { invalidateActorCachesForProfile } from "@/lib/invalidate-actor-caches";
 import { supabaseAdmin } from "../../../../../lib/supabase";
 import { sendAccountCredentialsEmail } from "../../../../../lib/send-account-credentials";
+import { createOrUpdateAuthUserWithTemporaryPassword } from "@/lib/auth-admin-users";
+import { auditDomainWrite } from "@/lib/audit-domain";
 
 const resetTemporaryPasswordSchema = z.object({
   profileId: z.string().min(1),
@@ -25,6 +28,8 @@ export async function POST(req: Request) {
   try {
     const access = await requireAdminContext(req);
     if (!access.ok) return access.response;
+    const perm = await requireFeatureAccess(access.context, "users", "update");
+    if (!perm.ok) return perm.response;
 
     const { schoolId } = access.context;
     if (!schoolId) {
@@ -84,68 +89,28 @@ export async function POST(req: Request) {
       );
     }
 
-    const temporaryPassword = generateTemporaryPassword();
-    const authLookup = await supabaseAdmin.auth.admin.getUserById(profile.id);
-
-    let authUser = authLookup.data.user;
-    if (!authUser) {
-      const email = String(profile.email || "")
-        .trim()
-        .toLowerCase();
-      if (!email) {
-        return NextResponse.json(
-          { error: "Managed account email is missing." },
-          { status: 400 },
-        );
-      }
-
-      const createdAuth = await supabaseAdmin.auth.admin.createUser({
-        id: profile.id,
-        email,
-        password: temporaryPassword,
-        email_confirm: true,
-        user_metadata: buildCreatedAuthUserMetadata({
-          firstName: String(profile.first_name || "").trim() || "User",
-          lastName: String(profile.last_name || "").trim(),
-          role,
-        }),
-      });
-
-      if (createdAuth.error || !createdAuth.data.user) {
-        throw (
-          createdAuth.error || new Error("Failed to repair managed auth user")
-        );
-      }
-
-      authUser = createdAuth.data.user;
-    }
-
-    const userMetadata = {
-      ...(authUser.user_metadata || {}),
-      role,
-      must_change_password: true,
-      first_name:
-        (authUser.user_metadata?.first_name as string | undefined) ||
-        String(profile.first_name || "").trim() ||
-        "User",
-      last_name:
-        (authUser.user_metadata?.last_name as string | undefined) ||
-        String(profile.last_name || "").trim(),
-    };
-
-    if (authLookup.data.user) {
-      const updateAuth = await supabaseAdmin.auth.admin.updateUserById(
-        profile.id,
-        {
-          password: temporaryPassword,
-          user_metadata: userMetadata,
-        },
+    const email = String(profile.email || "")
+      .trim()
+      .toLowerCase();
+    if (!email) {
+      return NextResponse.json(
+        { error: "Managed account email is missing." },
+        { status: 400 },
       );
-
-      if (updateAuth.error) {
-        throw updateAuth.error;
-      }
     }
+
+    const temporaryPassword = generateTemporaryPassword();
+    const authResult = await createOrUpdateAuthUserWithTemporaryPassword({
+      authUserId: profile.id,
+      email,
+      temporaryPassword,
+      userMetadata: buildCreatedAuthUserMetadata({
+        firstName: String(profile.first_name || "").trim() || "User",
+        lastName: String(profile.last_name || "").trim(),
+        role,
+      }),
+    });
+    const authUser = authResult.user;
 
     const now = new Date().toISOString();
     const { error: updateProfileError } = await supabaseAdmin
@@ -176,6 +141,20 @@ export async function POST(req: Request) {
         console.error("[admin-reset-password] Background email failed:", err);
       });
     }
+
+    await auditDomainWrite({
+      schoolId,
+      userId: access.context.userId,
+      action: "users.reset_temporary_password",
+      entityType: "profile",
+      entityId: profile.id,
+      newData: {
+        role,
+        email: targetEmail,
+        temporaryPasswordIssuedAt: now,
+      },
+      ipAddress: ip,
+    });
 
     return NextResponse.json({
       success: true,

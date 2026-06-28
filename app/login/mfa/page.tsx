@@ -182,7 +182,7 @@ export default function MfaChallengePage() {
             <button
               onClick={handleVerify}
               disabled={verifying || !activeFactorId || code.length !== 6}
-              className="w-full rounded-xl bg-sky-500 px-4 py-3 text-sm font-semibold text-white hover:bg-sky-400 disabled:opacity-60"
+              className="w-full rounded-xl bg-sky-500 px-4 py-3 text-sm font-semibold text-white hover:bg-sky-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 disabled:opacity-60"
             >
               {verifying ? (
                 <span className="inline-flex items-center gap-2">

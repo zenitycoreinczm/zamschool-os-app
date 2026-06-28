@@ -12,9 +12,13 @@ import {
   applyPlatformRateLimit,
   platformRateLimitResponse,
 } from "@/lib/platform-api-guard";
-import { isRedisConfigured, redisGetJson, redisSetJson } from "@/lib/redis";
-import { shellCacheKey } from "@/lib/redis-keys";
-import { REDIS_TTL } from "@/lib/redis-ttl";
+import {
+  isRedisConfigured,
+  redisGetJson,
+  redisSetJson,
+} from "@/lib/redis/client";
+import { shellCacheKey } from "@/lib/redis/keys";
+import { REDIS_TTL } from "@/lib/redis/ttl";
 
 const SHELL_ROLES = [
   "ADMIN",
@@ -29,6 +33,7 @@ const SHELL_ROLES = [
   "HR_ADMIN",
   "ICT_ADMIN",
   "DISCIPLINE_ADMIN",
+  "REGISTRAR",
   "GUIDANCE_OFFICE",
   "SUPER_ADMIN",
 ] as const;
@@ -53,20 +58,25 @@ type ShellPayload = {
 export async function GET(req: Request) {
   try {
     const access = await requireActorContext(
-      { allowedRoles: [...SHELL_ROLES], requireSchool: false, allowMetadataRoleFallback: true },
-      req
+      {
+        allowedRoles: [...SHELL_ROLES],
+        requireSchool: false,
+        allowMetadataRoleFallback: true,
+      },
+      req,
     );
     if (!access.ok) return access.response;
 
+    const { userId, schoolId } = access.context;
+
     const rate = await applyPlatformRateLimit({
       scope: "account-shell",
+      schoolId: schoolId ?? "",
       req,
-      userId: access.context.userId,
+      userId,
       preset: "workspaceContext",
     });
     if (!rate.allowed) return platformRateLimitResponse(rate);
-
-    const { userId, schoolId } = access.context;
 
     // Try Redis cache first
     const cacheKey = shellCacheKey(userId, schoolId);
@@ -91,7 +101,7 @@ export async function GET(req: Request) {
   } catch (error: unknown) {
     return NextResponse.json(
       { error: safeErrorMessage(error, "Failed to load shell") },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -124,7 +134,12 @@ async function buildShellPayload(actor: {
     last_name?: string | null;
     email?: string | null;
     avatar_url?: string | null;
-  }>(supabaseAdmin as never, actor.profileId || userId, "id, role, school_id, first_name, last_name, email, avatar_url", email);
+  }>(
+    supabaseAdmin as never,
+    actor.profileId || userId,
+    "id, role, school_id, first_name, last_name, email, avatar_url",
+    email,
+  );
 
   const profileRole = String(profile?.role || role || "").trim();
   const profileSchoolId = profile?.school_id || schoolId;
@@ -142,7 +157,11 @@ async function buildShellPayload(actor: {
 
   if (profileSchoolId) {
     const [schoolResult, yearResult, termResult] = await Promise.all([
-      supabaseAdmin.from("schools").select("name").eq("id", profileSchoolId).maybeSingle(),
+      supabaseAdmin
+        .from("schools")
+        .select("name")
+        .eq("id", profileSchoolId)
+        .maybeSingle(),
       supabaseAdmin
         .from("academic_years")
         .select("name")
@@ -158,7 +177,10 @@ async function buildShellPayload(actor: {
     ]);
 
     if (schoolResult.data?.name) schoolName = schoolResult.data.name;
-    yearTerm = buildAcademicContextLabel(yearResult.data?.name, termResult.data?.name);
+    yearTerm = buildAcademicContextLabel(
+      yearResult.data?.name,
+      termResult.data?.name,
+    );
   }
 
   // Unread counts
@@ -167,7 +189,12 @@ async function buildShellPayload(actor: {
     : { messages: 0, notifications: 0 };
 
   // Role-specific shell data
-  const shell = await loadRoleShell(profileRole, userId, profileSchoolId, profile?.id);
+  const shell = await loadRoleShell(
+    profileRole,
+    userId,
+    profileSchoolId,
+    profile?.id,
+  );
 
   return {
     userId,
@@ -181,7 +208,10 @@ async function buildShellPayload(actor: {
     lastName,
     avatarUrl:
       profileSchoolId && profile?.id
-        ? toProtectedAvatarUrl(profile.avatar_url, { schoolId: profileSchoolId, userId: profile.id })
+        ? toProtectedAvatarUrl(profile.avatar_url, {
+            schoolId: profileSchoolId,
+            userId: profile.id,
+          })
         : null,
     schoolName,
     yearTerm,
@@ -194,7 +224,7 @@ async function loadRoleShell(
   role: string,
   userId: string,
   schoolId: string | null,
-  profileId?: string | null
+  profileId?: string | null,
 ): Promise<Record<string, unknown>> {
   const normalized = role.toLowerCase();
 
@@ -245,6 +275,7 @@ async function loadStudentShell(userId: string, schoolId: string) {
       .from("classes")
       .select("id, name, grade_level")
       .eq("id", classId)
+      .eq("school_id", schoolId)
       .maybeSingle();
 
     className = classRow?.name || null;
@@ -259,7 +290,11 @@ async function loadStudentShell(userId: string, schoolId: string) {
   };
 }
 
-async function loadTeacherShell(userId: string, schoolId: string, profileId: string) {
+async function loadTeacherShell(
+  userId: string,
+  schoolId: string,
+  profileId: string,
+) {
   const today = new Date().toISOString().slice(0, 10);
 
   const [attendanceResult, assignmentsResult] = await Promise.all([
@@ -275,7 +310,9 @@ async function loadTeacherShell(userId: string, schoolId: string, profileId: str
       .eq("teacher_id", profileId),
   ]);
 
-  const assignmentIds = (assignmentsResult.data || []).map((a: any) => a.id).filter(Boolean);
+  const assignmentIds = (assignmentsResult.data || [])
+    .map((a: any) => a.id)
+    .filter(Boolean);
   let pendingGrades = 0;
   let draftResults = 0;
 
@@ -294,9 +331,11 @@ async function loadTeacherShell(userId: string, schoolId: string, profileId: str
     ]);
 
     pendingGrades = (pendingResult.data || []).filter(
-      (r: any) => r.created_at && r.score == null && !r.grade
+      (r: any) => r.created_at && r.score == null && !r.grade,
     ).length;
-    draftResults = (draftResult.data || []).filter((r: any) => !r.published_at).length;
+    draftResults = (draftResult.data || []).filter(
+      (r: any) => !r.published_at,
+    ).length;
   }
 
   return {

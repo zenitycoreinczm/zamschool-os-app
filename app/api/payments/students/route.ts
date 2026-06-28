@@ -1,19 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ZodError } from "zod";
+import { requireFeatureAccess } from "@/lib/feature-permissions";
 import { applyRateLimit, getClientIp } from "@/lib/server-guards";
 import { parseStudentPaymentInput } from "@/lib/payment-input";
 import { requirePaymentsContext } from "@/lib/server-auth";
 import { supabaseAdmin } from "@/lib/supabase";
+import { auditDomainWrite } from "@/lib/audit-domain";
 
 export async function GET(request: NextRequest) {
   try {
     const access = await requirePaymentsContext(request);
     if (!access.ok) return access.response;
+    const perm = await requireFeatureAccess(access.context, "payments", "read");
+    if (!perm.ok) return perm.response;
     const { schoolId, userId } = access.context;
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status"); // paid, pending, overdue
-    const search = String(searchParams.get("search") || "").trim().toLowerCase().slice(0, 80);
+    const search = String(searchParams.get("search") || "")
+      .trim()
+      .toLowerCase()
+      .slice(0, 80);
 
     // Get students with their payment summaries
     let query = supabaseAdmin
@@ -37,12 +44,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const { data: students, error: studentsError } = await query
-      .order("first_name");
+    const { data: students, error: studentsError } =
+      await query.order("first_name");
 
     if (studentsError) {
       console.error("Error fetching student payments:", studentsError);
-      return NextResponse.json({ error: "Failed to fetch student payments" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Failed to fetch student payments" },
+        { status: 500 },
+      );
     }
 
     // Get overdue student IDs
@@ -54,24 +64,25 @@ export async function GET(request: NextRequest) {
       .lt("due_date", todayStr)
       .in("status", ["PENDING", "PARTIAL"]);
 
-    const overdueIds = new Set((overdueRecords || []).map(r => r.student_id));
+    const overdueIds = new Set((overdueRecords || []).map((r) => r.student_id));
 
     // Get additional student details
-    const studentIds = (students || []).map(s => s.student_id);
-    const { data: studentDetails } = studentIds.length > 0
-      ? await supabaseAdmin
-          .from("profiles")
-          .select("id, phone, parent_email")
-          .eq("school_id", schoolId)
-          .in("id", studentIds)
-      : { data: [] };
+    const studentIds = (students || []).map((s) => s.student_id);
+    const { data: studentDetails } =
+      studentIds.length > 0
+        ? await supabaseAdmin
+            .from("profiles")
+            .select("id, phone, parent_email")
+            .eq("school_id", schoolId)
+            .in("id", studentIds)
+        : { data: [] };
 
     const studentDetailsMap = Object.fromEntries(
-      (studentDetails || []).map(detail => [detail.id, detail])
+      (studentDetails || []).map((detail) => [detail.id, detail]),
     );
 
     // Process students with additional info
-    let processedStudents = (students || []).map(student => {
+    let processedStudents = (students || []).map((student) => {
       const isOverdue = overdueIds.has(student.student_id);
       let paymentStatus = "paid";
       if (isOverdue) paymentStatus = "overdue";
@@ -80,30 +91,43 @@ export async function GET(request: NextRequest) {
       return {
         ...student,
         phone: studentDetailsMap[student.student_id]?.phone || null,
-        parentEmail: studentDetailsMap[student.student_id]?.parent_email || null,
+        parentEmail:
+          studentDetailsMap[student.student_id]?.parent_email || null,
         paymentStatus,
         isOverdue,
       };
     });
 
     if (status === "overdue") {
-      processedStudents = processedStudents.filter(s => s.isOverdue);
+      processedStudents = processedStudents.filter((s) => s.isOverdue);
     }
 
     if (search) {
       processedStudents = processedStudents.filter((student) =>
         [student.first_name, student.last_name, student.email].some((value) =>
-          String(value || "").toLowerCase().includes(search)
-        )
+          String(value || "")
+            .toLowerCase()
+            .includes(search),
+        ),
       );
     }
 
     // Calculate summary statistics
     const totalStudents = processedStudents.length;
-    const paidStudents = processedStudents.filter(s => s.pending_amount === 0).length;
-    const pendingStudents = processedStudents.filter(s => s.pending_amount > 0).length;
-    const totalPendingAmount = processedStudents.reduce((sum, s) => sum + s.pending_amount, 0);
-    const totalPaidAmount = processedStudents.reduce((sum, s) => sum + s.paid_amount, 0);
+    const paidStudents = processedStudents.filter(
+      (s) => s.pending_amount === 0,
+    ).length;
+    const pendingStudents = processedStudents.filter(
+      (s) => s.pending_amount > 0,
+    ).length;
+    const totalPendingAmount = processedStudents.reduce(
+      (sum, s) => sum + s.pending_amount,
+      0,
+    );
+    const totalPaidAmount = processedStudents.reduce(
+      (sum, s) => sum + s.paid_amount,
+      0,
+    );
 
     return NextResponse.json({
       data: processedStudents,
@@ -113,11 +137,14 @@ export async function GET(request: NextRequest) {
         pendingStudents,
         totalPendingAmount,
         totalPaidAmount,
-      }
+      },
     });
   } catch (error) {
     console.error("Error in payments students GET:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }
 
@@ -125,6 +152,12 @@ export async function POST(request: NextRequest) {
   try {
     const access = await requirePaymentsContext(request);
     if (!access.ok) return access.response;
+    const perm = await requireFeatureAccess(
+      access.context,
+      "payments",
+      "create",
+    );
+    if (!perm.ok) return perm.response;
     const { schoolId, userId } = access.context;
 
     const ip = getClientIp(request);
@@ -139,110 +172,84 @@ export async function POST(request: NextRequest) {
         {
           status: 429,
           headers: { "Retry-After": String(rate.retryAfterSec) },
-        }
+        },
       );
     }
 
-    const {
-      studentId,
-      amount,
-      paymentType,
-      paymentMethod,
-      referenceNumber,
-    } = parseStudentPaymentInput(await request.json());
+    const { studentId, amount, paymentType, paymentMethod, referenceNumber } =
+      parseStudentPaymentInput(await request.json());
 
-    // Verify student belongs to the same school
-    const { data: studentCheck, error: studentError } = await supabaseAdmin
-      .from("profiles")
-      .select("id, school_id")
-      .eq("id", studentId)
-      .eq("role", "student")
-      .eq("school_id", schoolId)
-      .single();
-
-    if (studentError || !studentCheck) {
-      return NextResponse.json({ error: "Student not found or access denied" }, { status: 404 });
-    }
-
-    // 1. Fetch pending/partial fees for this student ordered by due date
-    const { data: pendingFees, error: fetchFeesError } = await supabaseAdmin
-      .from("student_fees")
-      .select("*")
-      .eq("school_id", schoolId)
-      .eq("student_id", studentId)
-      .in("status", ["PENDING", "PARTIAL"])
-      .order("due_date", { ascending: true });
-
-    if (fetchFeesError) {
-      console.error("Error fetching pending fees:", fetchFeesError);
-      return NextResponse.json({ error: "Failed to process payment" }, { status: 500 });
-    }
-
-    // 2. Apply payment to debt sequentially
-    let remainingAmount = amount;
-    const updates = [];
-
-    if (pendingFees && pendingFees.length > 0) {
-      for (const fee of pendingFees) {
-        if (remainingAmount <= 0) break;
-
-        const balance = Number(fee.amount_due) - Number(fee.amount_paid);
-        const applyToThisFee = Math.min(remainingAmount, balance);
-        const newPaid = Number(fee.amount_paid) + applyToThisFee;
-        const newStatus = newPaid >= Number(fee.amount_due) ? "PAID" : "PARTIAL";
-
-        updates.push(
-          supabaseAdmin
-            .from("student_fees")
-            .update({
-              amount_paid: newPaid,
-              status: newStatus,
-              paid_at: newStatus === "PAID" ? new Date().toISOString() : fee.paid_at,
-              updated_at: new Date().toISOString()
-            })
-            .eq("id", fee.id)
-        );
-
-        remainingAmount -= applyToThisFee;
-      }
-
-      // Execute updates
-      await Promise.all(updates);
-    }
-
-    // 3. Create payment record
-    const { data: newPayment, error: paymentError } = await supabaseAdmin
-      .from("payments")
-      .insert({
-        student_id: studentId,
-        school_id: schoolId,
-        amount,
-        currency: "ZMW",
-        payment_type: paymentType,
-        payment_method: paymentMethod,
-        reference_number: referenceNumber,
-        status: "PAID",
-        paid_at: new Date().toISOString(),
-        created_by: userId,
-      })
-      .select()
-      .single();
+    const { data: transactionResult, error: paymentError } =
+      await supabaseAdmin.rpc("record_student_payment_transaction", {
+        p_school_id: schoolId,
+        p_student_id: studentId,
+        p_amount: amount,
+        p_payment_type: paymentType,
+        p_payment_method: paymentMethod,
+        p_reference_number: referenceNumber,
+        p_created_by: userId,
+      });
 
     if (paymentError) {
+      if (paymentError.message.includes("Student not found or access denied")) {
+        return NextResponse.json(
+          { error: "Student not found or access denied" },
+          { status: 404 },
+        );
+      }
+
       console.error("Error creating payment:", paymentError);
-      return NextResponse.json({ error: "Failed to process payment" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Failed to process payment" },
+        { status: 500 },
+      );
     }
+
+    const payload = (transactionResult || {}) as {
+      payment?: { id: string };
+      remaining_amount?: number | string | null;
+      applied_fee_ids?: string[] | null;
+    };
+    const newPayment = payload.payment;
+
+    if (!newPayment?.id) {
+      return NextResponse.json(
+        { error: "Failed to process payment" },
+        { status: 500 },
+      );
+    }
+
+    await auditDomainWrite({
+      schoolId,
+      userId,
+      action: "payment.recorded",
+      entityType: "payments",
+      entityId: newPayment.id,
+      newData: {
+        studentId,
+        amount,
+        paymentType,
+        paymentMethod,
+        referenceNumber,
+        remainingAmount: Number(payload.remaining_amount || 0),
+        appliedFeeIds: payload.applied_fee_ids || [],
+      },
+      ipAddress: ip,
+    });
 
     return NextResponse.json({ data: newPayment }, { status: 201 });
   } catch (error) {
     if (error instanceof ZodError) {
       return NextResponse.json(
         { error: "Invalid payment submission", details: error.issues },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     console.error("Error in payments students POST:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 },
+    );
   }
 }

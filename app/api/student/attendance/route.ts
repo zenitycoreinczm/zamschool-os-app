@@ -29,6 +29,7 @@ export async function GET(req: Request) {
 
     const rate = await applyPlatformRateLimit({
       scope: "student-attendance",
+      schoolId,
       req,
       userId,
       preset: "heavyRead",
