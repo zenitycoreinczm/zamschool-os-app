@@ -32,6 +32,14 @@ const perDeviceTimestamps = new Map<string, number[]>();
 // ─── Device identification ─────────────────────────────────────────────────
 
 /**
+ * Stable fallback ID when localStorage is unavailable (e.g. incognito mode,
+ * cookies disabled, or private browsing). Without this singleton, every call
+ * to getDeviceId() would generate a fresh random ID, which silently resets
+ * the per-device rate-limit budget and defeats the guard entirely.
+ */
+let fallbackDeviceId: string | null = null;
+
+/**
  * Get or create a unique device identifier.
  * This ensures each phone/browser has its own rate limit budget.
  */
@@ -52,8 +60,12 @@ function getDeviceId(): string {
     }
     return deviceId;
   } catch {
-    // Fallback if localStorage is unavailable
-    return `fallback-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    // Fallback if localStorage is unavailable — use a module-level singleton
+    // so the same ID persists for the lifetime of this page/tab.
+    if (!fallbackDeviceId) {
+      fallbackDeviceId = `fallback-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    }
+    return fallbackDeviceId;
   }
 }
 
@@ -250,6 +262,7 @@ export function getFetchGuardTelemetry(): {
  */
 export function resetFetchGuard(): void {
   perDeviceTimestamps.clear();
+  fallbackDeviceId = null;
 }
 
 // ─── Helper for createCallingComponent that also installs guard ─────────────

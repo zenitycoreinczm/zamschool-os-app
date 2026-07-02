@@ -6,7 +6,24 @@ import { SUPABASE_PROTECTION } from "@/lib/supabase-protection";
 
 /** Edge-safe (middleware cannot use TCP Redis). */
 const ROLE_CACHE_TTL_MS = SUPABASE_PROTECTION.middlewareRoleTtlMs;
+const ROLE_CACHE_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // every 5 minutes
 const roleCache = new Map<string, { role: KnownRole | null; expiresAt: number }>();
+
+// Periodic cleanup to prevent unbounded memory growth in long-running processes.
+// Expired entries are lazily skipped on read, but without cleanup they accumulate
+// indefinitely for users who never return within the TTL window.
+if (typeof window === "undefined") {
+  const timer = setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of roleCache.entries()) {
+      if (entry.expiresAt <= now) {
+        roleCache.delete(key);
+      }
+    }
+  }, ROLE_CACHE_CLEANUP_INTERVAL_MS);
+  // Don't block process exit
+  if (timer.unref) timer.unref();
+}
 
 export async function resolveMiddlewareProfileRole(
   userId: string,

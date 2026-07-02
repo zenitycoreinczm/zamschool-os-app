@@ -72,7 +72,7 @@ export async function sendSupabaseSignupEmail(input: {
       return { success: false, error: error.message };
     }
 
-    console.log(`[SupabaseEmailRelay] Signup email triggered for ${input.email}`);
+    console.log(`[SupabaseEmailRelay] Signup email triggered for ${input.email.split("@")[0]}***@...`);
     return { success: true };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";

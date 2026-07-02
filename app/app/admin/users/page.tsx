@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { getDisplayName } from "@/lib/profile-utils";
 import { adminApiJson } from "@/lib/admin-browser-api";
@@ -122,24 +122,27 @@ function adminSubtypeHomePath(role: string): string | null {
   return ADMIN_SUBTYPE_ROLE_DASHBOARDS[role] ?? null;
 }
 
+const USERS_CONSOLE_ALLOWED_ROLES = new Set<KnownRole>([
+  "PRINCIPAL",
+  "SUPER_ADMIN",
+  "REGISTRAR",
+]);
+
 export default function AdminUsersPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { role: workspaceRole } = useWorkspaceContext();
   const normalizedWorkspaceRole = normalizeRole(workspaceRole);
-  // /app/admin/users is the principal-only user console. Other admin
-  // subtypes (HR, ICT, discipline, registrar, guidance, deputy_head, etc.)
-  // have their own scoped routes. Bounce them to their own dashboard so
-  // they never land on controls that don't apply to their role.
+  // /app/admin/users is the user console for the Head Teacher, platform
+  // super admin, and the Registrar. Other admin subtypes (HR, ICT,
+  // discipline, guidance, deputy_head, etc.) have their own scoped routes.
+  // Bounce them to their own dashboard so they never land on controls that
+  // don't apply to their role.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const role = normalizedWorkspaceRole;
     if (!role) return;
-    const isPrincipal =
-      role === "PRINCIPAL" ||
-      role === "SUPER_ADMIN" ||
-      role === "HEAD_TEACHER";
-    if (isPrincipal) return;
+    if (USERS_CONSOLE_ALLOWED_ROLES.has(role)) return;
     const fallback = adminSubtypeHomePath(role);
     if (fallback && fallback !== "/app/admin/users") {
       router.replace(fallback);
@@ -256,8 +259,14 @@ export default function AdminUsersPage() {
   }, [search]);
 
   useEffect(() => {
+    // Only initialise the user directory for roles that are allowed to use
+    // this console (PRINCIPAL, SUPER_ADMIN, REGISTRAR). Admin subtypes that
+    // get bounced to their own dashboard are skipped to avoid a wasted load
+    // cycle before the redirect fires.
+    const role = normalizedWorkspaceRole;
+    if (!role || !USERS_CONSOLE_ALLOWED_ROLES.has(role)) return;
     void init();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [normalizedWorkspaceRole]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const currentRows = useMemo(() => {
     const rows =

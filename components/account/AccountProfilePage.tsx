@@ -103,11 +103,6 @@ export function AccountProfilePage({
     buildFormState(initialProfileData),
   );
   const { invalidate: invalidateWorkspace } = useWorkspaceContext();
-  const workspaceRole = useWorkspaceContext().role;
-  const resolvedSettingsHref = useMemo(
-    () => resolveSettingsPath(settingsHref, workspaceRole),
-    [settingsHref, workspaceRole],
-  );
 
   const fullName = useMemo(
     () => `${form.first_name} ${form.last_name}`.trim(),

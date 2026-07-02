@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 
 import { adminApiJson } from "@/lib/admin-browser-api";
+import { panelAccentStyles } from "@/components/workspace/heroAccents";
 import {
   SCHOOL_ADMINISTRATOR_INVITE_ROLE,
   STAFF_INVITE_ROLE_OPTIONS,
@@ -24,6 +25,7 @@ import {
   type StaffInviteRoleOption,
   type StaffInviteRoleValue,
 } from "@/lib/staff-invite-options";
+import { cn } from "@/lib/utils";
 
 type InvitationRow = {
   id: string;
@@ -74,7 +76,16 @@ type StaffInvitePanelProps = {
   description?: string;
   primaryInviteLabel?: string;
   secondaryInviteLabel?: string;
-  accent?: "sky" | "teal" | "indigo" | "amber" | "emerald" | "violet" | "rose" | "slate" | "green";
+  accent?:
+    | "sky"
+    | "teal"
+    | "indigo"
+    | "amber"
+    | "emerald"
+    | "violet"
+    | "rose"
+    | "slate"
+    | "green";
 };
 
 export function StaffInvitePanel({
@@ -90,6 +101,7 @@ export function StaffInvitePanel({
   accent = "emerald",
 }: StaffInvitePanelProps = {}) {
   const defaultRole = roleOptions[0]?.value || SCHOOL_ADMINISTRATOR_INVITE_ROLE;
+  const palette = panelAccentStyles[accent];
   const [expandedInternal, setExpandedInternal] = useState(true);
   const expanded = expandedProp ?? expandedInternal;
   const setExpanded = (value: boolean) => {
@@ -113,8 +125,7 @@ export function StaffInvitePanel({
   const [copied, setCopied] = useState(false);
 
   const selectedRoleHint = useMemo(
-    () =>
-      roleOptions.find((option) => option.value === form.role)?.hint || "",
+    () => roleOptions.find((option) => option.value === form.role)?.hint || "",
     [form.role, roleOptions],
   );
 
@@ -146,9 +157,7 @@ export function StaffInvitePanel({
     setForm({ ...EMPTY_FORM, role: defaultRole });
   }
 
-  function openStaffInvite(
-    role: StaffInviteRoleValue = defaultRole,
-  ) {
+  function openStaffInvite(role: StaffInviteRoleValue = defaultRole) {
     setExpanded(true);
     setShowForm(true);
     setIssued(null);
@@ -198,11 +207,10 @@ export function StaffInvitePanel({
       });
       setForm({ ...EMPTY_FORM, role: defaultRole });
       setForm(EMPTY_FORM);
-      toast.success("Staff account created — share the temporary password below.");
-      await loadInvitations();
-      toast.error(
-        err instanceof Error ? err.message : "Failed to create staff account",
+      toast.success(
+        "Staff account created — share the temporary password below.",
       );
+      await loadInvitations();
     } finally {
       setSubmitting(false);
     }
@@ -322,8 +330,19 @@ export function StaffInvitePanel({
                     </p>
 
                     {issued.temporaryPassword && (
-                      <div className={cn("mt-3 rounded-workspace-md border px-4 py-3", palette.surfaceBorder, palette.subBg)}>
-                        <div className={cn("flex items-center gap-2 text-xs font-semibold uppercase tracking-wide", palette.subText)}>
+                      <div
+                        className={cn(
+                          "mt-3 rounded-workspace-md border px-4 py-3",
+                          palette.surfaceBorder,
+                          palette.subBg,
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            "flex items-center gap-2 text-xs font-semibold uppercase tracking-wide",
+                            palette.subText,
+                          )}
+                        >
                           <KeyRound className="h-3.5 w-3.5" />
                           Temporary password
                         </div>
@@ -333,7 +352,9 @@ export function StaffInvitePanel({
                           </code>
                           <button
                             type="button"
-                            onClick={() => void copyToClipboard(issued.temporaryPassword!)}
+                            onClick={() =>
+                              void copyToClipboard(issued.temporaryPassword!)
+                            }
                             className={cn(
                               "inline-flex items-center gap-1.5 rounded-workspace-md border px-2.5 py-1.5 text-xs font-semibold transition active:scale-[0.98]",
                               palette.chip,

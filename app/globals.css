@@ -29,6 +29,14 @@
     --color-stat-student: #ddd6fe;
     --color-stat-parent: #ffedd5;
 
+    /* Chart palette */
+    --color-chart-boys: #c3ebfa;
+    --color-chart-girls: #fae27c;
+    --color-chart-present: #f9d86d;
+    --color-chart-absent: #bde9fb;
+    --color-chart-collected: #c3ebfa;
+    --color-chart-pending: #cfceff;
+
     /* Radius scale (4px grid) */
     --radius-workspace-xs: 0.5rem;
     --radius-workspace-sm: 0.625rem;

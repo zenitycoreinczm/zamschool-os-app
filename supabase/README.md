@@ -30,6 +30,11 @@ supabase migration new my_feature
 supabase db push
 ```
 
+ == project incline 
+ previous 
+ {(project)} info classic news 
+ new line preview 
+ 
 ## Project Info
 
 - **Project ID**: `jnnroitaftfmclegbeac`
@@ -37,3 +42,4 @@ supabase db push
 - **PostgreSQL**: 17
 - **Tables**: 88 (all with RLS enabled)
 - **Roles**: 14 (super_admin, principal, deputy_head, bursar, payments, guidance_office, academic_admin, hr_admin, ict_admin, discipline_admin, admin, teacher, student, parent)
+-

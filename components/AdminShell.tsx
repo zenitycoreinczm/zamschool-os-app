@@ -39,7 +39,10 @@ export default function AdminShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { data: workspace, loading: workspaceLoading, error: workspaceError } = useWorkspaceContext();
+  const workspaceCtx = useWorkspaceContext() ?? undefined;
+  const workspace = workspaceCtx?.data ?? null;
+  const workspaceLoading = workspaceCtx?.loading ?? true;
+  const workspaceError = workspaceCtx?.error ?? "";
   const [open, setOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [polledUnread, setPolledUnread] = useState<{
@@ -116,8 +119,13 @@ export default function AdminShell({
   if (workspaceError && !workspaceLoading) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-slate-50 p-4">
-        <div role="alert" className="max-w-md rounded-2xl border border-rose-200 bg-white p-6 shadow-lg">
-          <h2 className="text-lg font-bold text-rose-700">Workspace Access Error</h2>
+        <div
+          role="alert"
+          className="max-w-md rounded-2xl border border-rose-200 bg-white p-6 shadow-lg"
+        >
+          <h2 className="text-lg font-bold text-rose-700">
+            Workspace Access Error
+          </h2>
           <p className="mt-2 text-sm text-slate-600">{workspaceError}</p>
           <button
             onClick={() => router.push("/login")}

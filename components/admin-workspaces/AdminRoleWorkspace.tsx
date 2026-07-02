@@ -606,7 +606,7 @@ const CONFIG: Record<WorkspaceKey, WorkspaceConfig> = {
       { label: "Absent (7d)", value: "—", icon: ClipboardCheck },
     ],
     quickLink: {
-      href: "/app/admin/users",
+      href: "/app/registrar/people",
       label: "Student directory",
       icon: Users,
     },
@@ -615,21 +615,21 @@ const CONFIG: Record<WorkspaceKey, WorkspaceConfig> = {
       module(
         "Student directory",
         "Full learner profiles, admissions records, and guardian links.",
-        "/app/admin/users",
+        "/app/registrar/people",
         Users,
         "emerald",
       ),
       module(
         "Bulk learner import",
         "Import new students from CSV/Excel admission files.",
-        "/app/admin/users",
+        "/app/registrar/people",
         FolderOpen,
         "sky",
       ),
       module(
         "Class placements",
         "Assign learners to classes, streams, and academic groups.",
-        "/app/admin/classes",
+        "/app/registrar/classes",
         GraduationCap,
         "indigo",
       ),
@@ -643,7 +643,7 @@ const CONFIG: Record<WorkspaceKey, WorkspaceConfig> = {
       module(
         "Documents & records",
         "Learner biodata, birth certificates, and document tracking.",
-        "/app/admin/users",
+        "/app/registrar/people",
         FileText,
         "amber",
       ),
@@ -673,23 +673,30 @@ export default function AdminRoleWorkspace({
   variant?: "full" | "tools";
 }) {
   const config = CONFIG[role] || CONFIG.ict_admin;
-  const { data: workspace } = useWorkspaceContext();
-  const { metrics, highlights, loading: metricsLoading } = useWorkspaceSummary();
+  const workspaceCtx = useWorkspaceContext();
+  // Defensive access: during HMR or provider unmount, useContext can return
+  // undefined, which would crash on `.data`. Guard both levels.
+  const workspace = (workspaceCtx && workspaceCtx.data) || null;
+  const summary = useWorkspaceSummary() ?? undefined;
+  const metrics = summary?.metrics ?? [];
+  const highlights = summary?.highlights ?? [];
+  const metricsLoading = summary?.loading ?? true;
 
   const schoolName = workspace?.schoolName || config.title;
   const yearTerm = workspace?.yearTerm || "Role workspace";
   const displayName = workspace?.displayName || "Your account";
 
   // Build stat cards — live metrics once loaded, fallback skeleton while loading
-  const displayStats = metricsLoading || metrics.length === 0
-    ? config.fallbackMetrics.map((item, index) => ({
-        label: item.label,
-        value: metricsLoading ? "…" : item.value,
-        hint: undefined,
-        icon: item.icon,
-        tone: (["sky", "violet", "amber", "emerald"] as const)[index % 4],
-      }))
-    : metricsToStatCards(metrics, config.metricIcons);
+  const displayStats =
+    metricsLoading || metrics.length === 0
+      ? config.fallbackMetrics.map((item, index) => ({
+          label: item.label,
+          value: metricsLoading ? "…" : item.value,
+          hint: undefined,
+          icon: item.icon,
+          tone: (["sky", "violet", "amber", "emerald"] as const)[index % 4],
+        }))
+      : metricsToStatCards(metrics, config.metricIcons);
 
   // FocusPills: prefer live role-specific highlights, fall back to static role focus
   const pillItems = highlights.length > 0 ? highlights : config.focus;

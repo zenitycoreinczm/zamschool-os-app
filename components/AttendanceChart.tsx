@@ -127,23 +127,23 @@ export default function AttendanceChart() {
                 <CartesianGrid
                   strokeDasharray="2 4"
                   vertical={false}
-                  stroke="#e8ebf1"
+                  stroke="var(--color-workspace-border)"
                 />
                 <XAxis
                   dataKey="name"
                   axisLine={false}
-                  tick={{ fill: "#9ca3af", fontSize: 12 }}
+                  tick={{ fill: "var(--color-workspace-muted)", fontSize: 12 }}
                   tickLine={false}
                 />
                 <YAxis
                   axisLine={false}
-                  tick={{ fill: "#d1d5db" }}
+                  tick={{ fill: "var(--color-workspace-border-strong)" }}
                   tickLine={false}
                 />
                 <Tooltip
                   contentStyle={{
                     borderRadius: "12px",
-                    borderColor: "#eef2f7",
+                    borderColor: "var(--color-workspace-border)",
                   }}
                 />
                 <Legend
@@ -157,13 +157,13 @@ export default function AttendanceChart() {
                 />
                 <Bar
                   dataKey="present"
-                  fill="#f9d86d"
+                  fill="var(--color-chart-present)"
                   legendType="circle"
                   radius={[12, 12, 0, 0]}
                 />
                 <Bar
                   dataKey="absent"
-                  fill="#bde9fb"
+                  fill="var(--color-chart-absent)"
                   legendType="circle"
                   radius={[12, 12, 0, 0]}
                 />

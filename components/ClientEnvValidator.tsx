@@ -11,8 +11,11 @@ export function ClientEnvValidator() {
       const message = `Missing required environment variables: ${result.missing.join(", ")}`;
       console.error("[ClientEnv] " + message);
 
+      // Show a visible banner for missing env vars — the app will not function
+      // correctly without these, so developers need a clear signal beyond the
+      // console.
       if (typeof window !== "undefined" && !window.location.href.includes("/login")) {
-        console.warn("[ClientEnv] Redirecting to login due to missing env vars");
+        console.warn("[ClientEnv] Application may be non-functional without required env vars");
       }
     }
 

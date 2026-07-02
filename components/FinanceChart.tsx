@@ -136,17 +136,17 @@ export default function FinanceChart() {
                   bottom: 5,
                 }}
               >
-                <CartesianGrid strokeDasharray="3 3" stroke="#ddd" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-workspace-border)" />
                 <XAxis
                   dataKey="name"
                   axisLine={false}
-                  tick={{ fill: "#d1d5db" }}
+                  tick={{ fill: "var(--color-workspace-border-strong)" }}
                   tickLine={false}
                   tickMargin={10}
                 />
                 <YAxis
                   axisLine={false}
-                  tick={{ fill: "#d1d5db" }}
+                  tick={{ fill: "var(--color-workspace-border-strong)" }}
                   tickLine={false}
                   tickMargin={20}
                 />
@@ -159,13 +159,13 @@ export default function FinanceChart() {
                 <Line
                   type="monotone"
                   dataKey="collected"
-                  stroke="#C3EBFA"
+                  stroke="var(--color-chart-collected)"
                   strokeWidth={5}
                 />
                 <Line
                   type="monotone"
                   dataKey="pending"
-                  stroke="#CFCEFF"
+                  stroke="var(--color-chart-pending)"
                   strokeWidth={5}
                 />
               </LineChart>

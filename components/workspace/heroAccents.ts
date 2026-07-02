@@ -1,4 +1,13 @@
-export type HeroAccent = "sky" | "teal" | "indigo" | "amber" | "emerald" | "violet" | "rose" | "slate" | "green";
+export type HeroAccent =
+  | "sky"
+  | "teal"
+  | "indigo"
+  | "amber"
+  | "emerald"
+  | "violet"
+  | "rose"
+  | "slate"
+  | "green";
 
 export const heroAccentStyles: Record<
   HeroAccent,
@@ -132,6 +141,141 @@ export const pageHeaderAccentStyles: Record<
     eyebrow: "text-green-600",
     surface: "from-white via-white to-green-50/80",
     icon: "bg-green-50 text-green-600 ring-green-100",
+  },
+};
+
+export const panelAccentStyles: Record<
+  HeroAccent,
+  {
+    surfaceBorder: string;
+    subBg: string;
+    subText: string;
+    chip: string;
+    chipBorder: string;
+    chipHover: string;
+    dismissBorder: string;
+    dismissBg: string;
+    dismissText: string;
+    dismissHoverBg: string;
+    dismissHoverText: string;
+  }
+> = {
+  sky: {
+    surfaceBorder: "border-sky-200",
+    subBg: "bg-sky-50/60",
+    subText: "text-sky-700",
+    chip: "bg-white",
+    chipBorder: "border-sky-200",
+    chipHover: "hover:bg-sky-50",
+    dismissBorder: "border-sky-200",
+    dismissBg: "bg-white",
+    dismissText: "text-sky-800",
+    dismissHoverBg: "hover:bg-sky-50",
+    dismissHoverText: "hover:text-sky-900",
+  },
+  teal: {
+    surfaceBorder: "border-teal-200",
+    subBg: "bg-teal-50/60",
+    subText: "text-teal-700",
+    chip: "bg-white",
+    chipBorder: "border-teal-200",
+    chipHover: "hover:bg-teal-50",
+    dismissBorder: "border-teal-200",
+    dismissBg: "bg-white",
+    dismissText: "text-teal-800",
+    dismissHoverBg: "hover:bg-teal-50",
+    dismissHoverText: "hover:text-teal-900",
+  },
+  indigo: {
+    surfaceBorder: "border-indigo-200",
+    subBg: "bg-indigo-50/60",
+    subText: "text-indigo-700",
+    chip: "bg-white",
+    chipBorder: "border-indigo-200",
+    chipHover: "hover:bg-indigo-50",
+    dismissBorder: "border-indigo-200",
+    dismissBg: "bg-white",
+    dismissText: "text-indigo-800",
+    dismissHoverBg: "hover:bg-indigo-50",
+    dismissHoverText: "hover:text-indigo-900",
+  },
+  amber: {
+    surfaceBorder: "border-amber-200",
+    subBg: "bg-amber-50/60",
+    subText: "text-amber-700",
+    chip: "bg-white",
+    chipBorder: "border-amber-200",
+    chipHover: "hover:bg-amber-50",
+    dismissBorder: "border-amber-200",
+    dismissBg: "bg-white",
+    dismissText: "text-amber-800",
+    dismissHoverBg: "hover:bg-amber-50",
+    dismissHoverText: "hover:text-amber-900",
+  },
+  emerald: {
+    surfaceBorder: "border-emerald-200",
+    subBg: "bg-emerald-50/60",
+    subText: "text-emerald-700",
+    chip: "bg-white",
+    chipBorder: "border-emerald-200",
+    chipHover: "hover:bg-emerald-50",
+    dismissBorder: "border-emerald-200",
+    dismissBg: "bg-white",
+    dismissText: "text-emerald-800",
+    dismissHoverBg: "hover:bg-emerald-50",
+    dismissHoverText: "hover:text-emerald-900",
+  },
+  violet: {
+    surfaceBorder: "border-violet-200",
+    subBg: "bg-violet-50/60",
+    subText: "text-violet-700",
+    chip: "bg-white",
+    chipBorder: "border-violet-200",
+    chipHover: "hover:bg-violet-50",
+    dismissBorder: "border-violet-200",
+    dismissBg: "bg-white",
+    dismissText: "text-violet-800",
+    dismissHoverBg: "hover:bg-violet-50",
+    dismissHoverText: "hover:text-violet-900",
+  },
+  rose: {
+    surfaceBorder: "border-rose-200",
+    subBg: "bg-rose-50/60",
+    subText: "text-rose-700",
+    chip: "bg-white",
+    chipBorder: "border-rose-200",
+    chipHover: "hover:bg-rose-50",
+    dismissBorder: "border-rose-200",
+    dismissBg: "bg-white",
+    dismissText: "text-rose-800",
+    dismissHoverBg: "hover:bg-rose-50",
+    dismissHoverText: "hover:text-rose-900",
+  },
+  slate: {
+    surfaceBorder: "border-slate-200",
+    subBg: "bg-slate-50/60",
+    subText: "text-slate-600",
+    chip: "bg-white",
+    chipBorder: "border-slate-200",
+    chipHover: "hover:bg-slate-50",
+    dismissBorder: "border-slate-200",
+    dismissBg: "bg-white",
+    dismissText: "text-slate-700",
+    dismissHoverBg: "hover:bg-slate-50",
+    dismissHoverText: "hover:text-slate-800",
+  },
+  green: {
+    surfaceBorder: "border-green-200",
+    subBg: "bg-green-50/60",
+    subText: "text-green-700",
+    chip: "bg-white",
+    chipBorder: "border-green-200",
+    chipHover: "hover:bg-green-50",
+    dismissBorder: "border-green-200",
+    dismissBg: "bg-white",
+    dismissText: "text-green-800",
+    dismissHoverBg: "hover:bg-green-50",
+    dismissHoverText: "hover:text-green-900",
   },
 };
 

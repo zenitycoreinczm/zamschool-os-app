@@ -30,7 +30,10 @@ export default function RoleBasedShell({
 }: {
   children: React.ReactNode;
 }) {
-  const { role, loading, error } = useWorkspaceContext();
+  const workspaceCtx = useWorkspaceContext() ?? undefined;
+  const role = workspaceCtx?.role ?? null;
+  const loading = workspaceCtx?.loading ?? true;
+  const error = workspaceCtx?.error ?? "";
 
   if (loading) {
     return <WorkspaceLoader label="Loading workspace" />;
@@ -80,5 +83,11 @@ export default function RoleBasedShell({
     return <StudentShell>{children}</StudentShell>;
   }
 
+  // Unknown / unmapped role. Log so audits surface the gap instead of
+  // silently rendering the admin shell for a role that wasn't accounted for.
+  if (typeof window !== "undefined" && role) {
+    // eslint-disable-next-line no-console
+    console.warn(`[RoleBasedShell] No shell mapped for role "${role}". Falling back to AdminShell.`);
+  }
   return <AdminShell>{children}</AdminShell>;
 }

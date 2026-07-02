@@ -145,6 +145,13 @@ function metricsForRole(
         metric("Late (7d)", String(attendanceSnapshot.late)),
         metric("Inbox", String(unread.messages), "Unread messages"),
       ];
+    case "REGISTRAR":
+      return [
+        metric("Students", String(profileCounts.student)),
+        metric("Classes", String(data.classCount)),
+        metric("Parents", String(profileCounts.parent)),
+        metric("Absent (7d)", String(attendanceSnapshot.absent), "Lessons marked absent"),
+      ];
     case "TEACHER":
       return [
         metric("Unread", String(unread.messages + unread.notifications)),
@@ -187,10 +194,13 @@ function highlightsForRole(
 ): string[] {
   const items: string[] = [];
 
-  if (["PRINCIPAL", "ADMIN", "DEPUTY_HEAD"].includes(role)) {
+  if (["PRINCIPAL", "ADMIN", "DEPUTY_HEAD", "REGISTRAR"].includes(role)) {
     items.push(`${data.profileCounts.student} learners on roll`);
     if (data.profileCounts.teacher > 0) {
       items.push(`${data.profileCounts.teacher} teachers on staff`);
+    }
+    if (data.profileCounts.parent > 0) {
+      items.push(`${data.profileCounts.parent} parent/guardian accounts linked`);
     }
     if (data.attendanceSnapshot.absent > 0) {
       items.push(`${data.attendanceSnapshot.absent} absent lesson marks in the last 7 days`);
@@ -253,7 +263,7 @@ async function loadProfileCounts(schoolId: string): Promise<ProfileCounts> {
     countRows("teachers", schoolId),
     countRows("parents", schoolId),
   ]);
-  const roles = ["student", "teacher", "parent", "admin", "principal", "deputy_head", "bursar"];
+  const roles = ["student", "teacher", "parent", "admin", "principal", "deputy_head", "bursar", "guidance_office", "academic_admin", "hr_admin", "ict_admin", "discipline_admin", "registrar"];
   const counts: ProfileCounts = {
     total: 0,
     student: 0,

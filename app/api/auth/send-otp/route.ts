@@ -105,7 +105,7 @@ export async function POST(req: Request) {
       );
     }
 
-    console.log(`[send-otp] OTP sent to ${target.email} via custom SMTP`);
+    console.log(`[send-otp] OTP sent to ${maskEmail(target.email)} via custom SMTP`);
     return NextResponse.json({
       success: true,
       message: "OTP sent to your email",
@@ -144,4 +144,11 @@ async function loadOtpTarget(userId: string, requestedEmail: string) {
     userId: lookup.data.user.id,
     email: resolvedEmail,
   };
+}
+
+/** Mask an email for logging: "j***@example.com" */
+function maskEmail(email: string): string {
+  const [local, domain] = email.split("@");
+  if (!local || !domain) return "***";
+  return `${local[0]}***@${domain}`;
 }

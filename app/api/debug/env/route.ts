@@ -7,10 +7,12 @@ export async function GET(req: Request) {
     return blocked;
   }
 
-  const env: any = {};
+  const env: Record<string, string> = {};
   for (const key in process.env) {
     if (key.includes("SUPABASE") || key.includes("DATABASE") || key.includes("URL")) {
-      env[key] = process.env[key]?.substring(0, 5) + "...";
+      // Only indicate whether the value is set — never leak partial secrets,
+      // even in dev. A 5-char prefix is enough to assist brute-force attacks.
+      env[key] = process.env[key] ? "<set>" : "<missing>";
     }
   }
   return NextResponse.json(env);

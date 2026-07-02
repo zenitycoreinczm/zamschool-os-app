@@ -1,6 +1,9 @@
 // Staff invitations view — shared by admin and principal pages.
+// The API response returns a temporary_password for new staff accounts.
+// This view tracks the last created password via lastCreatedPassword state.
 "use client";
 
+import { useState } from "react";
 import { StaffInvitePanel } from "@/components/admin/StaffInvitePanel";
 import {
   STAFF_INVITE_ROLE_OPTIONS,
@@ -29,6 +32,10 @@ export function StaffInvitationsView({
   description?: string;
   accent?: StaffInviteAccent;
 }) {
+  const [lastCreatedPassword, setLastCreatedPassword] = useState<
+    string | null
+  >(null);
+
   return (
     <StaffInvitePanel
       roleOptions={roleOptions}

@@ -64,7 +64,7 @@ test("account unread summary route returns compact unread counts for the signed-
   assert.match(source, /export async function GET/);
   assert.match(source, /requireActorContext/);
   assert.match(source, /getUnreadCountsForUser/);
-  assert.match(source, /inbox-read-cache/);
+  assert.match(source, /inbox\/read-cache/);
   assert.match(source, /applyPlatformRateLimit/);
   assert.match(source, /notifications/);
   assert.match(source, /messages/);

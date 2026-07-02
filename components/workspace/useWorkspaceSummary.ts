@@ -25,10 +25,9 @@ export function useWorkspaceSummary() {
       const body = await adminApiJson<SummaryPayload | undefined>(
         "/api/workspace/summary",
       );
-      setMetrics(Array.isArray(body?.data?.metrics) ? body.data.metrics : []);
-      setHighlights(
-        Array.isArray(body?.data?.highlights) ? body.data.highlights : [],
-      );
+      const data = body?.data;
+      setMetrics(Array.isArray(data?.metrics) ? data.metrics : []);
+      setHighlights(Array.isArray(data?.highlights) ? data.highlights : []);
     } catch (err: unknown) {
       setMetrics([]);
       setHighlights([]);

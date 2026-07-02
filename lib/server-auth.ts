@@ -178,7 +178,19 @@ export async function requireAdminContext(req?: Request) {
 export async function requireAdminSetupContext(req?: Request) {
   return requireActorContext(
     {
-      allowedRoles: ["ADMIN", "PRINCIPAL", "SUPER_ADMIN"],
+      allowedRoles: [
+        "ADMIN",
+        "PRINCIPAL",
+        "DEPUTY_HEAD",
+        "BURSAR",
+        "ACADEMIC_ADMIN",
+        "HR_ADMIN",
+        "ICT_ADMIN",
+        "DISCIPLINE_ADMIN",
+        "GUIDANCE_OFFICE",
+        "REGISTRAR",
+        "SUPER_ADMIN",
+      ],
       requireSchool: false,
       allowMetadataRoleFallback: true,
     },

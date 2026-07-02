@@ -78,8 +78,8 @@ export default function CountChart() {
     displayTotal > 0 ? Math.round((displayGirls / displayTotal) * 100) : 0;
   const chartData = useMemo(
     () => [
-      { name: "Girls", count: displayGirls, fill: "#FAE27C" },
-      { name: "Boys", count: displayBoys, fill: "#C3EBFA" },
+      { name: "Girls", count: displayGirls, fill: "var(--color-chart-girls)" },
+      { name: "Boys", count: displayBoys, fill: "var(--color-chart-boys)" },
     ],
     [displayBoys, displayGirls],
   );
@@ -131,8 +131,8 @@ export default function CountChart() {
                 </RadialBarChart>
                 <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
                   <div className="flex items-center gap-2">
-                    <div className="h-10 w-5 rounded-full bg-[#bde9fb]" />
-                    <div className="h-10 w-5 rounded-full bg-[#f9d86d]" />
+                    <div className="h-10 w-5 rounded-full bg-chart-boys" />
+                    <div className="h-10 w-5 rounded-full bg-chart-girls" />
                   </div>
                 </div>
               </>
@@ -142,7 +142,7 @@ export default function CountChart() {
       </div>
       <div className="grid grid-cols-2 gap-3 pt-3">
         <div className="min-w-0 rounded-2xl bg-sky-50/70 px-3 py-3">
-          <div className="w-4 h-4 bg-[#bde9fb] rounded-full" />
+          <div className="w-4 h-4 bg-chart-boys rounded-full" />
           <p className="text-[2rem] leading-none font-bold text-slate-900">
             {displayBoys}
           </p>
@@ -151,7 +151,7 @@ export default function CountChart() {
           </h2>
         </div>
         <div className="min-w-0 rounded-2xl bg-amber-50/70 px-3 py-3">
-          <div className="w-4 h-4 bg-[#f9d86d] rounded-full" />
+          <div className="w-4 h-4 bg-chart-girls rounded-full" />
           <p className="text-[2rem] leading-none font-bold text-slate-900">
             {displayGirls}
           </p>

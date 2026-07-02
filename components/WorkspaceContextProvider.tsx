@@ -121,6 +121,11 @@ export function WorkspaceContextProvider({
   );
 }
 
-export function useWorkspaceContext() {
-  return useContext(WorkspaceContext) || fallbackWorkspaceContext;
+export function useWorkspaceContext(): WorkspaceContextValue {
+  // useContext returns the provider value (or the default fallback when no
+  // provider is mounted). The || guard is belt-and-suspenders: if a Fast
+  // Refresh / HMR boundary ever hands us a stale or undefined context value,
+  // we still return a safe shape so callers that destructure `.data` don't
+  // crash with "Cannot read properties of undefined (reading 'data')".
+  return useContext(WorkspaceContext) ?? fallbackWorkspaceContext;
 }

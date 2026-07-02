@@ -431,8 +431,8 @@ const registrarSections: WorkspaceNavSection[] = [
   {
     label: "Admissions",
     items: [
-      { href: "/app/admin/users", label: "Students, Teachers & Parents", icon: Users },
-      { href: "/app/admin/classes", label: "Classes", icon: GraduationCap },
+      { href: "/app/registrar/people", label: "Students, Teachers & Parents", icon: Users },
+      { href: "/app/registrar/classes", label: "Classes", icon: GraduationCap },
     ],
   },
   {

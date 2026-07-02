@@ -18,7 +18,7 @@ test("generic settings page uses a shared account settings component with a gene
   ]);
 
   assert.match(pageSource, /AccountSettingsPage/);
-  assert.match(pageSource, /pageTitle="Settings"/);
+  assert.match(pageSource, /title="Settings"/);
   assert.match(pageSource, /preferencesStorageKey="workspace-account-settings"/);
   assert.doesNotMatch(pageSource, /Teacher Settings/);
   assert.doesNotMatch(pageSource, /teacher-workspace-settings/);

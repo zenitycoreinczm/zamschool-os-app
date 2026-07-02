@@ -28,8 +28,12 @@ const FALLBACK = [
 ];
 
 export default function AdminDashboardHome() {
-  const { data: workspace } = useWorkspaceContext();
-  const { metrics, highlights, loading } = useWorkspaceSummary();
+  const workspaceCtx = useWorkspaceContext() ?? undefined;
+  const workspace = workspaceCtx?.data ?? null;
+  const summary = useWorkspaceSummary() ?? undefined;
+  const metrics = summary?.metrics ?? [];
+  const highlights = summary?.highlights ?? [];
+  const loading = summary?.loading ?? true;
 
   const schoolName = workspace?.schoolName || "Your school";
   const yearTerm = workspace?.yearTerm || "Academic context";

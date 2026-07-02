@@ -4,8 +4,10 @@ import assert from "node:assert/strict";
 const {
   flattenNavSections,
   getRoleNavItems,
+  getRoleDashboardPath,
   roleNavSections,
   teacherPortalSections,
+  ROLE_DASHBOARD_PATHS,
 } = await import("../../lib/workspace/nav.ts");
 
 test("admin nav puts messages near the top under Today", () => {
@@ -71,4 +73,26 @@ test("teacher and student nav sections use mounted /app workspace routes", () =>
   assert.ok(!teacherPortalItems.some((item) => item.href === "/teacher"));
   assert.ok(!teacherPortalItems.some((item) => item.href === "/teacher/inbox"));
   assert.ok(!studentItems.some((item) => item.href === "/student"));
+});
+
+test("ROLE_DASHBOARD_PATHS gives each role a canonical dashboard route", () => {
+  assert.equal(ROLE_DASHBOARD_PATHS.admin, "/app/dashboard");
+  assert.equal(ROLE_DASHBOARD_PATHS.teacher, "/app/teacher");
+  assert.equal(ROLE_DASHBOARD_PATHS.student, "/app/student");
+  assert.equal(ROLE_DASHBOARD_PATHS.parent, "/app/parent");
+  assert.equal(ROLE_DASHBOARD_PATHS.payments, "/app/payments");
+  assert.equal(ROLE_DASHBOARD_PATHS.principal, "/app/principal");
+
+  // First nav item per role should match the canonical dashboard route.
+  for (const role of Object.keys(ROLE_DASHBOARD_PATHS)) {
+    const expected = ROLE_DASHBOARD_PATHS[role];
+    const first = getRoleNavItems(role)[0];
+    assert.ok(first, `no nav items for role ${role}`);
+    assert.equal(
+      first.href,
+      expected,
+      `first nav entry for ${role} should point at ${expected}, got ${first.href}`,
+    );
+    assert.equal(getRoleDashboardPath(role), expected);
+  }
 });

@@ -203,6 +203,13 @@ async function updateOwnProfile(
   let working = { ...payload };
 
   for (let index = 0; index < 10; index += 1) {
+    const remainingKeys = Object.keys(working).filter((k) => working[k] !== undefined);
+    if (remainingKeys.length === 0) {
+      throw new Error(
+        "All requested profile fields map to missing database columns — no update was performed",
+      );
+    }
+
     const byProfileId = await supabaseAdmin
       .from("profiles")
       .update(working)
@@ -220,6 +227,9 @@ async function updateOwnProfile(
       byProfileId.error?.message,
     );
     if (profileIdMissingColumn && profileIdMissingColumn in working) {
+      console.warn(
+        `[updateOwnProfile] Column "${profileIdMissingColumn}" missing from profiles table — dropping from update payload`,
+      );
       delete working[profileIdMissingColumn];
       continue;
     }
@@ -245,6 +255,9 @@ async function updateOwnProfile(
       byAuthUserId.error?.message,
     );
     if (authUserIdMissingColumn && authUserIdMissingColumn in working) {
+      console.warn(
+        `[updateOwnProfile] Column "${authUserIdMissingColumn}" missing from profiles table — dropping from update payload`,
+      );
       delete working[authUserIdMissingColumn];
       continue;
     }
