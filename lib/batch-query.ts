@@ -273,11 +273,8 @@ export async function batchInsert<T extends Record<string, unknown>>(
     };
   }
 
-  // Import supabase client lazily to avoid circular dependencies
-  const { createClient } = await import('@supabase/supabase-js');
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-  const supabase = createClient(supabaseUrl, supabaseKey);
+  // Use the shared admin singleton to avoid creating a new client per call.
+  const { supabaseAdmin: supabase } = await import('@/lib/supabase');
 
   const { batchDelayMs = 33, maxRetries = 3, useBudget = true, signal } = options ?? {};
 

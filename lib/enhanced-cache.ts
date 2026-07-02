@@ -57,43 +57,75 @@ export const CACHE_CONFIGS = {
   },
 } as const;
 
-type CacheEntry<T> = { data: T; timestamp: number };
+type CacheEntry<T> = { data: T; timestamp: number; expiresAt: number };
 
 const cacheStore = new Map<string, CacheEntry<unknown>>();
 const staleMarkers = new Map<string, string>();
 
+// Reverse index: tag → Set of cache keys. Enables O(1) tag-based invalidation
+// instead of an O(n) full-scan over all keys.
+const tagIndex = new Map<string, Set<string>>();
+
+function indexKeyForTag(tag: string, cacheKey: string): void {
+  let keys = tagIndex.get(tag);
+  if (!keys) {
+    keys = new Set();
+    tagIndex.set(tag, keys);
+  }
+  keys.add(cacheKey);
+}
+
+function removeKeyFromTagIndex(cacheKey: string): void {
+  for (const keys of tagIndex.values()) {
+    keys.delete(cacheKey);
+  }
+}
+
 function cacheGet<T>(key: string): T | null {
   const entry = cacheStore.get(key);
-  return entry ? (entry as CacheEntry<T>).data : null;
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    cacheStore.delete(key);
+    removeKeyFromTagIndex(key);
+    return null;
+  }
+  return (entry as CacheEntry<T>).data;
 }
 
 function cacheGetWithMeta<T>(key: string): CacheEntry<T> | null {
   const entry = cacheStore.get(key);
-  return entry ? (entry as CacheEntry<T>) : null;
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    cacheStore.delete(key);
+    removeKeyFromTagIndex(key);
+    return null;
+  }
+  return entry as CacheEntry<T>;
 }
 
-function cacheSet<T>(key: string, value: CacheEntry<T>, ttlSeconds: number): void {
+function cacheSet<T>(key: string, value: CacheEntry<T>, _ttlSeconds: number): void {
+  // expiresAt is already embedded in the entry; no per-entry setTimeout needed.
+  // The 60-second setInterval cleanup at the bottom of this file handles eviction.
   cacheStore.set(key, value);
-  if (ttlSeconds > 0) {
-    setTimeout(() => {
-      const current = cacheStore.get(key);
-      if (current && Date.now() - current.timestamp >= ttlSeconds * 1000) {
-        cacheStore.delete(key);
-      }
-    }, ttlSeconds * 1000).unref?.();
-  }
 }
 
 function cacheDelete(key: string): void {
   cacheStore.delete(key);
   staleMarkers.delete(key);
+  removeKeyFromTagIndex(key);
 }
 
 function cacheClearPattern(pattern: string): void {
   const needle = pattern.replace(/\*/g, "");
-  for (const key of [...cacheStore.keys(), ...staleMarkers.keys()]) {
+  for (const key of cacheStore.keys()) {
     if (key.includes(needle)) {
       cacheStore.delete(key);
+      staleMarkers.delete(key);
+      removeKeyFromTagIndex(key);
+    }
+  }
+  for (const key of staleMarkers.keys()) {
+    if (key.includes(needle)) {
       staleMarkers.delete(key);
     }
   }
@@ -141,7 +173,10 @@ export async function withCache<T>(
     }
 
     const fetchPromise = fetchFn().then((data) => {
-      cacheSet(cacheKey, { data, timestamp: Date.now() } satisfies CacheEntry<T>, config.ttlSeconds + (config.staleWhileRevalidate || 0));
+      const now = Date.now();
+      const totalTtlMs = (config.ttlSeconds + (config.staleWhileRevalidate || 0)) * 1000;
+      cacheSet(cacheKey, { data, timestamp: now, expiresAt: now + totalTtlMs }, config.ttlSeconds + (config.staleWhileRevalidate || 0));
+      if (config.tags) config.tags.forEach((tag) => indexKeyForTag(tag, cacheKey));
       inflightRequests.delete(cacheKey);
       return data;
     }).catch((error) => {
@@ -166,7 +201,10 @@ async function refreshCache<T>(
   try {
     staleMarkers.set(staleKey, "refreshing");
     const data = await fetchFn();
-    cacheSet(cacheKey, { data, timestamp: Date.now() }, config.ttlSeconds + (config.staleWhileRevalidate || 0));
+    const now = Date.now();
+    const totalTtlMs = (config.ttlSeconds + (config.staleWhileRevalidate || 0)) * 1000;
+    cacheSet(cacheKey, { data, timestamp: now, expiresAt: now + totalTtlMs }, config.ttlSeconds + (config.staleWhileRevalidate || 0));
+    if (config.tags) config.tags.forEach((tag) => indexKeyForTag(tag, cacheKey));
     staleMarkers.delete(staleKey);
   } catch (error) {
     console.error("[Cache] Background refresh error:", error);
@@ -186,7 +224,16 @@ export async function invalidateCacheByTags(tags: string[]): Promise<void> {
 }
 
 export async function invalidateByTag(tag: CacheTag): Promise<void> {
-  cacheClearPattern(`cache:${tag}:`);
+  // O(1) lookup via reverse index instead of O(n) full-scan.
+  const keys = tagIndex.get(tag);
+  if (keys) {
+    for (const key of keys) {
+      cacheStore.delete(key);
+      staleMarkers.delete(key.replace(/^cache:/, "stale:"));
+    }
+    tagIndex.delete(tag);
+  }
+  // Also clear any stale markers that match the tag prefix (belt-and-suspenders).
   cacheClearPattern(`stale:${tag}:`);
 }
 
@@ -225,39 +272,30 @@ export function generateUserCacheKey(
   return `${role}:${userId}:${resource}${paramStr}`;
 }
 
-const memoryCache = new Map<string, { data: unknown; expiry: number }>();
-
+/**
+ * withMultiLayerCache is now a thin wrapper over the unified cacheStore.
+ * The separate memoryCache Map has been removed — cacheStore already serves
+ * as the single in-memory layer, avoiding duplicate storage of the same data.
+ */
 export async function withMultiLayerCache<T>(
   key: string,
   fetchFn: () => Promise<T>,
   config: { memoryTTL: number; redisTTL?: number }
 ): Promise<T> {
-  const now = Date.now();
   const ttlSeconds = config.memoryTTL || config.redisTTL || 300;
-
-  const memCached = memoryCache.get(key);
-  if (memCached && memCached.expiry > now) {
-    return memCached.data as T;
-  }
-
-  const storeCached = cacheGet<T>(key);
-  if (storeCached) {
-    memoryCache.set(key, { data: storeCached, expiry: now + ttlSeconds * 1000 });
-    return storeCached;
-  }
-
-  const data = await fetchFn();
-  memoryCache.set(key, { data, expiry: now + ttlSeconds * 1000 });
-  cacheSet(key, { data, timestamp: now }, ttlSeconds);
-  return data;
+  return withCache(key, fetchFn, { ttlSeconds });
 }
 
+// Periodic eviction: remove expired entries from cacheStore and staleMarkers.
+// This is the sole eviction mechanism — no per-entry setTimeout timers are used.
 if (typeof window === "undefined") {
   setInterval(() => {
     const now = Date.now();
-    for (const [key, value] of memoryCache.entries()) {
-      if (value.expiry <= now) {
-        memoryCache.delete(key);
+    for (const [key, entry] of cacheStore.entries()) {
+      if (entry.expiresAt <= now) {
+        cacheStore.delete(key);
+        staleMarkers.delete(key);
+        removeKeyFromTagIndex(key);
       }
     }
   }, 60_000).unref?.();

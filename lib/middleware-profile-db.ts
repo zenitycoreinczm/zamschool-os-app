@@ -1,35 +1,26 @@
 /**
  * Edge-safe profile role fetch (no enhanced-cache, no Redis).
+ *
+ * Uses a single query with an OR filter across id, auth_user_id, and email
+ * instead of up to 3 sequential round-trips. Returns the first matching role.
  */
 export async function fetchMiddlewareProfileRole(
   client: any,
   userId: string,
   userEmail?: string | null
 ): Promise<string | null> {
-  const columns = "role";
+  // Build OR filter: always match by id and auth_user_id; add email when available.
+  const orFilter = userEmail
+    ? `id.eq.${userId},auth_user_id.eq.${userId},email.eq.${userEmail}`
+    : `id.eq.${userId},auth_user_id.eq.${userId}`;
 
-  const byId = await client
+  const { data, error } = await client
     .from("profiles")
-    .select(columns)
-    .eq("id", userId)
+    .select("role")
+    .or(orFilter)
+    .limit(1)
     .maybeSingle();
-  if (byId.data?.role) return byId.data.role;
 
-  const byAuth = await client
-    .from("profiles")
-    .select(columns)
-    .eq("auth_user_id", userId)
-    .maybeSingle();
-  if (byAuth.data?.role) return byAuth.data.role;
-
-  if (userEmail) {
-    const byEmail = await client
-      .from("profiles")
-      .select(columns)
-      .eq("email", userEmail)
-      .maybeSingle();
-    if (byEmail.data?.role) return byEmail.data.role;
-  }
-
-  return null;
+  if (error || !data?.role) return null;
+  return data.role;
 }

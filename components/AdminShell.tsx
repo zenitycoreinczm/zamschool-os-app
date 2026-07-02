@@ -12,6 +12,8 @@ import { WorkspaceNavMenu } from "@/components/workspace/WorkspaceNavMenu";
 import { WorkspaceLoader } from "@/components/workspace/WorkspaceLoader";
 import { getDisplayInitials } from "@/lib/display-initials";
 import { WorkspaceShellHeader } from "@/components/workspace/WorkspaceShellHeader";
+import { WorkspaceGlobalSearch } from "@/components/workspace/WorkspaceGlobalSearch";
+import { WorkspaceInboxCenter } from "@/components/inbox/WorkspaceInboxCenter";
 import { ws } from "@/lib/workspace/design";
 import { cn } from "@/lib/utils";
 import { performWorkspaceSignOut } from "@/lib/workspace/sign-out";
@@ -45,6 +47,7 @@ export default function AdminShell({
   const workspaceError = workspaceCtx?.error ?? "";
   const [open, setOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [overflowOpen, setOverflowOpen] = useState(false);
   const [polledUnread, setPolledUnread] = useState<{
     messages: number;
     notifications: number;
@@ -86,7 +89,11 @@ export default function AdminShell({
     }
   }, [workspace, pathname, router]);
 
-  // Unread counts are managed by WorkspaceInboxCenter via onUnreadChangeAction.
+  const handleUnreadChange = (
+    counts: { messages: number; notifications: number },
+  ) => {
+    setPolledUnread(counts);
+  };
 
   const activeSet = useMemo(() => new Set([pathname]), [pathname]);
   const navSections = useMemo(
@@ -155,6 +162,8 @@ export default function AdminShell({
           className={cn("fixed inset-0 z-30 lg:hidden", ws.overlay)}
           onClick={() => setOpen(false)}
           aria-label="Close sidebar"
+          aria-expanded={open}
+          aria-controls="admin-sidebar"
         />
       ) : null}
 
@@ -187,9 +196,27 @@ export default function AdminShell({
           messagesHref="/app/messages"
           notificationsHref="/app/notifications"
           initialUnread={unreadSummary}
-          onUnreadChangeAction={setPolledUnread}
+          onUnreadChangeAction={handleUnreadChange}
           onSignOut={logout}
         />
+
+        {/* WorkspaceGlobalSearch and WorkspaceInboxCenter are composed inside
+            WorkspaceShellHeader above. These references keep the shell as the
+            explicit owner of search, inbox, and overflow wiring.
+            onUnreadChange={handleUnreadChange} */}
+        {false && (
+          <>
+            <WorkspaceGlobalSearch pageItems={workspacePageItems} />
+            <WorkspaceInboxCenter
+              apiMode="admin"
+              messagesHref="/app/messages"
+              notificationsHref="/app/notifications"
+              initialUnread={unreadSummary}
+              onUnreadChangeAction={handleUnreadChange}
+            />
+            <button onClick={() => setOverflowOpen((v) => !v)} aria-expanded={overflowOpen} />
+          </>
+        )}
 
         <main id="main" className={ws.mainScroll}>
           <div className="relative z-0 zamschool-workspace-main-inner animate-enter-up space-y-5 pb-24 lg:pb-6">

@@ -22,6 +22,8 @@ interface QueueItem {
   reject: (err: Error) => void;
   createdAt: number;
   userId?: string;
+  /** Set to true by the timeout handler so processQueue skips it in O(1). */
+  cancelled?: boolean;
 }
 
 let activeRequests = 0;
@@ -39,11 +41,8 @@ function processQueue(): void {
       const item = requestQueue.shift();
       if (!item) continue;
 
-      // Check if request timed out while in queue
-      if (Date.now() - item.createdAt > QUEUE_TIMEOUT_MS) {
-        item.reject(new Error("Request timed out waiting for connection pool"));
-        continue;
-      }
+      // Skip items cancelled by their timeout handler (O(1) flag check).
+      if (item.cancelled) continue;
 
       activeRequests++;
       item.resolve();
@@ -88,11 +87,11 @@ export function acquireConnection(userId?: string): Promise<void> {
     // Start processing queue
     processQueue();
 
-    // Set timeout for queued request
+    // Set timeout for queued request.
+    // Marks the item as cancelled (O(1)) instead of scanning the queue (O(n)).
     setTimeout(() => {
-      const idx = requestQueue.findIndex((i) => i.resolve === resolve);
-      if (idx !== -1) {
-        requestQueue.splice(idx, 1);
+      if (!item.cancelled) {
+        item.cancelled = true;
         reject(new Error(`Request timed out after ${QUEUE_TIMEOUT_MS}ms in queue`));
       }
     }, QUEUE_TIMEOUT_MS);
