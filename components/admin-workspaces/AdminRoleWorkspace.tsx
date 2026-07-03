@@ -672,16 +672,20 @@ export default function AdminRoleWorkspace({
   role: WorkspaceKey;
   variant?: "full" | "tools";
 }) {
-  const config = CONFIG[role] || CONFIG.ict_admin;
+  const config = CONFIG[role] ?? CONFIG.ict_admin;
   const workspaceCtx = useWorkspaceContext();
   // Defensive access: during HMR or provider unmount, useContext can return
-  // undefined, which would crash on `.data`. Guard both levels.
-  const workspace = (workspaceCtx && workspaceCtx.data) || null;
+  // undefined, which would crash on `.data`. Optional chaining guards both levels.
+  const workspace = workspaceCtx?.data ?? null;
   const summaryHook = useWorkspaceSummary();
-  const summary = summaryHook && typeof summaryHook === 'object' ? summaryHook : null;
-  const metrics = (summary && Array.isArray(summary.metrics)) ? summary.metrics : [];
-  const highlights = (summary && Array.isArray(summary.highlights)) ? summary.highlights : [];
-  const metricsLoading = (summary && typeof summary.loading === 'boolean') ? summary.loading : true;
+  const summary =
+    summaryHook && typeof summaryHook === "object" ? summaryHook : null;
+  const metrics = Array.isArray(summary?.metrics) ? summary.metrics : [];
+  const highlights = Array.isArray(summary?.highlights)
+    ? summary.highlights
+    : [];
+  const metricsLoading =
+    typeof summary?.loading === "boolean" ? summary.loading : true;
 
   const configOrFallback = config || CONFIG.ict_admin;
   const schoolName = workspace?.schoolName || configOrFallback.title;
