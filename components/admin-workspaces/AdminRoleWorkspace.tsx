@@ -104,56 +104,56 @@ const CONFIG: Record<WorkspaceKey, WorkspaceConfig> = {
     },
     metricIcons: [Users, Users, GraduationCap, ClipboardCheck],
     modules: [
-      module(
+      moduleItem(
         "Timetable review",
         "Validate class timetables and detect scheduling conflicts.",
         "/app/admin/timetable",
         CalendarClock,
         "indigo",
       ),
-      module(
+      moduleItem(
         "Attendance trends",
         "School-wide absence and punctuality patterns with 7-day view.",
         "/app/admin/attendance",
         ClipboardCheck,
         "sky",
       ),
-      module(
+      moduleItem(
         "Academic results",
         "Review exam results and subject performance across classes.",
         "/app/admin/assignments",
         TrendingUp,
         "violet",
       ),
-      module(
+      moduleItem(
         "Classes & subjects",
         "Class groupings, subject catalog, and teacher assignments.",
         "/app/admin/classes",
         GraduationCap,
         "amber",
       ),
-      module(
+      moduleItem(
         "Staff directory",
         "View teacher and staff profiles (read-only).",
         "/app/admin/users",
         Users,
         "emerald",
       ),
-      module(
+      moduleItem(
         "Announcements",
         "Broadcast academic notices and policy updates.",
         "/app/announcements",
         Megaphone,
         "rose",
       ),
-      module(
+      moduleItem(
         "Academic reports",
         "Generate and review term and annual academic reports.",
         "/app/admin/academic",
         FileBarChart2,
         "slate",
       ),
-      module(
+      moduleItem(
         "Messages",
         "Communicate with department heads and leadership.",
         "/app/messages",
@@ -187,42 +187,42 @@ const CONFIG: Record<WorkspaceKey, WorkspaceConfig> = {
     },
     metricIcons: [CreditCard, CreditCard, Users, Bell],
     modules: [
-      module(
+      moduleItem(
         "Finance records",
         "Income and expense records.",
         "/app/admin/finance",
         FileBarChart2,
         "amber",
       ),
-      module(
+      moduleItem(
         "Fee management",
         "Fees, billing, and balances.",
         "/app/payments/fees",
         CreditCard,
         "emerald",
       ),
-      module(
+      moduleItem(
         "Student accounts",
         "Payment status by learner.",
         "/app/payments/students",
         Users,
         "sky",
       ),
-      module(
+      moduleItem(
         "Payments dashboard",
         "Focused payments workspace.",
         "/app/payments",
         BarChart3,
         "indigo",
       ),
-      module(
+      moduleItem(
         "Notifications",
         "Fee alerts and reminders.",
         "/app/notifications",
         Bell,
         "rose",
       ),
-      module(
+      moduleItem(
         "Messages",
         "Coordinate with leadership and guardians.",
         "/app/messages",
@@ -256,35 +256,35 @@ const CONFIG: Record<WorkspaceKey, WorkspaceConfig> = {
     },
     metricIcons: [Users, ClipboardCheck, AlertTriangle, MessageSquare],
     modules: [
-      module(
+      moduleItem(
         "Student directory",
         "Profiles and guardian context.",
         "/app/admin/users",
         Users,
         "emerald",
       ),
-      module(
+      moduleItem(
         "Attendance signals",
         "Patterns that may need support.",
         "/app/admin/attendance",
         ClipboardCheck,
         "sky",
       ),
-      module(
+      moduleItem(
         "Messages",
         "Private staff and leadership communication.",
         "/app/messages",
         MessageSquare,
         "indigo",
       ),
-      module(
+      moduleItem(
         "Events",
         "Counseling sessions and welfare events.",
         "/app/events",
         CalendarClock,
         "rose",
       ),
-      module(
+      moduleItem(
         "Notifications",
         "Student welfare alerts.",
         "/app/notifications",
@@ -319,49 +319,49 @@ const CONFIG: Record<WorkspaceKey, WorkspaceConfig> = {
     },
     metricIcons: [GraduationCap, BookOpen, ClipboardCheck, Users],
     modules: [
-      module(
+      moduleItem(
         "Timetable builder",
         "Create and manage per-class timetables with teacher period assignments.",
         "/app/admin/timetable",
         CalendarClock,
         "indigo",
       ),
-      module(
+      moduleItem(
         "Academic years & terms",
         "Define school years, terms, and activate timetable periods.",
         "/app/admin/academic",
         BookOpen,
         "violet",
       ),
-      module(
+      moduleItem(
         "Classes & streams",
         "Class groups, streams, and class teacher supervisors.",
         "/app/admin/classes",
         GraduationCap,
         "sky",
       ),
-      module(
+      moduleItem(
         "Subject catalog",
         "Subject definitions, codes, and curriculum structure.",
         "/app/admin/subjects",
         BookOpen,
         "emerald",
       ),
-      module(
+      moduleItem(
         "ECZ grading scales",
         "Configure national ECZ and custom school grading rules.",
         "/app/admin/grading-scales",
         School,
         "amber",
       ),
-      module(
+      moduleItem(
         "Assignments & exams",
         "Create school-wide assignments and examination events.",
         "/app/admin/assignments",
         ClipboardCheck,
         "rose",
       ),
-      module(
+      moduleItem(
         "Attendance overview",
         "Monitor class-level attendance for academic compliance.",
         "/app/admin/attendance",
@@ -396,42 +396,42 @@ const CONFIG: Record<WorkspaceKey, WorkspaceConfig> = {
     },
     metricIcons: [UserCog, Users, Building2, MessageSquare],
     modules: [
-      module(
+      moduleItem(
         "Staff directory",
         "Full employee profiles, roles, and contact records.",
         "/app/admin/users",
         Users,
         "emerald",
       ),
-      module(
+      moduleItem(
         "Departments & structure",
         "School departments, HODs, and staff assignments.",
         "/app/admin/school",
         Building2,
         "indigo",
       ),
-      module(
+      moduleItem(
         "Bulk staff import",
         "Import staff and teacher records from CSV/Excel files.",
         "/app/admin/users",
         FolderOpen,
         "violet",
       ),
-      module(
+      moduleItem(
         "Messages",
         "Communicate with staff, teachers, and leadership.",
         "/app/messages",
         MessageSquare,
         "rose",
       ),
-      module(
+      moduleItem(
         "Notifications",
         "Onboarding alerts, invite acceptances, and account events.",
         "/app/notifications",
         Bell,
         "slate",
       ),
-      module(
+      moduleItem(
         "Account settings",
         "HR admin account preferences and notification settings.",
         "/app/settings",
@@ -466,56 +466,56 @@ const CONFIG: Record<WorkspaceKey, WorkspaceConfig> = {
     },
     metricIcons: [Users, ShieldCheck, Users, Bell],
     modules: [
-      module(
+      moduleItem(
         "User accounts",
         "Account recovery, password resets, and access troubleshooting.",
         "/app/admin/users",
         Users,
         "emerald",
       ),
-      module(
+      moduleItem(
         "Security audit trail",
         "Review security-sensitive actions and system-level changes.",
         "/app/admin/audit",
         ShieldCheck,
         "slate",
       ),
-      module(
+      moduleItem(
         "School profile & settings",
         "Platform identity, branding, and technical configuration.",
         "/app/admin/school",
         Building2,
         "sky",
       ),
-      module(
+      moduleItem(
         "System settings",
         "Configure platform features, integrations, and preferences.",
         "/app/settings",
         Settings,
         "indigo",
       ),
-      module(
+      moduleItem(
         "Device & access monitoring",
         "Review active sessions and unusual login activity.",
         "/app/admin/audit",
         Monitor,
         "violet",
       ),
-      module(
+      moduleItem(
         "MFA & security keys",
         "Manage multi-factor authentication and security settings.",
         "/app/settings",
         KeyRound,
         "amber",
       ),
-      module(
+      moduleItem(
         "Notifications",
         "System alerts, security events, and platform notices.",
         "/app/notifications",
         Bell,
         "rose",
       ),
-      module(
+      moduleItem(
         "Messages",
         "Technical support and coordination with leadership.",
         "/app/messages",
@@ -549,35 +549,35 @@ const CONFIG: Record<WorkspaceKey, WorkspaceConfig> = {
     },
     metricIcons: [Users, ClipboardCheck, AlertTriangle, MessageSquare],
     modules: [
-      module(
+      moduleItem(
         "Student directory",
         "Profiles for follow-up.",
         "/app/admin/users",
         Users,
         "emerald",
       ),
-      module(
+      moduleItem(
         "Attendance signals",
         "Absence and punctuality patterns.",
         "/app/admin/attendance",
         ClipboardCheck,
         "sky",
       ),
-      module(
+      moduleItem(
         "Messages",
         "Discipline follow-up.",
         "/app/messages",
         MessageSquare,
         "indigo",
       ),
-      module(
+      moduleItem(
         "Events",
         "Hearings and interventions.",
         "/app/events",
         CalendarClock,
         "rose",
       ),
-      module(
+      moduleItem(
         "Notifications",
         "Behavior and attendance alerts.",
         "/app/notifications",
@@ -612,49 +612,49 @@ const CONFIG: Record<WorkspaceKey, WorkspaceConfig> = {
     },
     metricIcons: [Users, GraduationCap, Users, ClipboardCheck],
     modules: [
-      module(
+      moduleItem(
         "Student directory",
         "Full learner profiles, admissions records, and guardian links.",
         "/app/registrar/people",
         Users,
         "emerald",
       ),
-      module(
+      moduleItem(
         "Bulk learner import",
         "Import new students from CSV/Excel admission files.",
         "/app/registrar/people",
         FolderOpen,
         "sky",
       ),
-      module(
+      moduleItem(
         "Class placements",
         "Assign learners to classes, streams, and academic groups.",
         "/app/registrar/classes",
         GraduationCap,
         "indigo",
       ),
-      module(
+      moduleItem(
         "Attendance & enrolment",
         "Enrolment status and early-term attendance overview.",
         "/app/admin/attendance",
         ClipboardCheck,
         "violet",
       ),
-      module(
+      moduleItem(
         "Documents & records",
         "Learner biodata, birth certificates, and document tracking.",
         "/app/registrar/people",
         FileText,
         "amber",
       ),
-      module(
+      moduleItem(
         "Messages",
         "Communicate admissions updates to parents and staff.",
         "/app/messages",
         MessageSquare,
         "rose",
       ),
-      module(
+      moduleItem(
         "Notifications",
         "Admission approvals, transfer alerts, and enrolment events.",
         "/app/notifications",
@@ -770,7 +770,7 @@ export default function AdminRoleWorkspace({
   );
 }
 
-function module(
+function moduleItem(
   title: string,
   description: string,
   href: string,
