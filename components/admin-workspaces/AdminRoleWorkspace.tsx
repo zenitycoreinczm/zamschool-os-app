@@ -672,41 +672,47 @@ export default function AdminRoleWorkspace({
   role: WorkspaceKey;
   variant?: "full" | "tools";
 }) {
-  const config = CONFIG[role] || CONFIG.ict_admin;
+  const config = CONFIG[role] ?? CONFIG.ict_admin;
   const workspaceCtx = useWorkspaceContext();
   // Defensive access: during HMR or provider unmount, useContext can return
-  // undefined, which would crash on `.data`. Guard both levels.
-  const workspace = (workspaceCtx && workspaceCtx.data) || null;
-  const summary = useWorkspaceSummary() ?? undefined;
-  const metrics = summary?.metrics ?? [];
-  const highlights = summary?.highlights ?? [];
-  const metricsLoading = summary?.loading ?? true;
+  // undefined, which would crash on `.data`. Optional chaining guards both levels.
+  const workspace = workspaceCtx?.data ?? null;
+  const summaryHook = useWorkspaceSummary();
+  const summary =
+    summaryHook && typeof summaryHook === "object" ? summaryHook : null;
+  const metrics = Array.isArray(summary?.metrics) ? summary.metrics : [];
+  const highlights = Array.isArray(summary?.highlights)
+    ? summary.highlights
+    : [];
+  const metricsLoading =
+    typeof summary?.loading === "boolean" ? summary.loading : true;
 
-  const schoolName = workspace?.schoolName || config.title;
-  const yearTerm = workspace?.yearTerm || "Role workspace";
+  const configOrFallback = config || CONFIG.ict_admin;
+  const schoolName = workspace?.schoolName || configOrFallback.title;
+  const yearTerm = workspace?.yearTerm || configOrFallback.title;
   const displayName = workspace?.displayName || "Your account";
 
   // Build stat cards — live metrics once loaded, fallback skeleton while loading
   const displayStats =
     metricsLoading || metrics.length === 0
-      ? config.fallbackMetrics.map((item, index) => ({
+      ? configOrFallback.fallbackMetrics.map((item, index) => ({
           label: item.label,
           value: metricsLoading ? "…" : item.value,
           hint: undefined,
           icon: item.icon,
           tone: (["sky", "violet", "amber", "emerald"] as const)[index % 4],
         }))
-      : metricsToStatCards(metrics, config.metricIcons);
+      : metricsToStatCards(metrics, configOrFallback.metricIcons);
 
   // FocusPills: prefer live role-specific highlights, fall back to static role focus
-  const pillItems = highlights.length > 0 ? highlights : config.focus;
+  const pillItems = highlights.length > 0 ? highlights : configOrFallback.focus;
 
   const pillAccent =
-    config.accent === "teal" || config.accent === "emerald"
+    configOrFallback.accent === "teal" || configOrFallback.accent === "emerald"
       ? "teal"
-      : config.accent === "indigo" ||
-          config.accent === "violet" ||
-          config.accent === "rose"
+      : configOrFallback.accent === "indigo" ||
+          configOrFallback.accent === "violet" ||
+          configOrFallback.accent === "rose"
         ? "indigo"
         : "sky";
 
@@ -715,19 +721,19 @@ export default function AdminRoleWorkspace({
       {variant === "full" ? (
         <>
           <AdminPageHero
-            eyebrow={config.eyebrow}
+            eyebrow={configOrFallback.eyebrow}
             title={schoolName}
-            description={`Welcome back, ${displayName}. ${config.summary} ${yearTerm}.`}
-            accent={config.accent}
+            description={`Welcome back, ${displayName}. ${configOrFallback.summary} ${yearTerm}.`}
+            accent={configOrFallback.accent}
             stats={displayStats}
             actions={
-              config.quickLink ? (
+              configOrFallback.quickLink ? (
                 <Link
-                  href={config.quickLink.href}
+                  href={configOrFallback.quickLink.href}
                   className="inline-flex items-center gap-1.5 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-100"
                 >
-                  <config.quickLink.icon className="h-4 w-4 text-sky-600" />
-                  {config.quickLink.label}
+                  <configOrFallback.quickLink.icon className="h-4 w-4 text-sky-600" />
+                  {configOrFallback.quickLink.label}
                 </Link>
               ) : null
             }
@@ -748,7 +754,7 @@ export default function AdminRoleWorkspace({
         />
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {config.modules.map((item) => (
+          {configOrFallback.modules.map((item) => (
             <ModuleCard
               key={item.title}
               title={item.title}
