@@ -7,11 +7,22 @@ test("safeErrorMessage extracts message from Error instance", () => {
   assert.equal(safeErrorMessage(new Error("Database connection failed")), "Database connection failed");
 });
 
-test("safeErrorMessage returns fallback for non-Error values", () => {
-  assert.equal(safeErrorMessage("string error"), "An unexpected error occurred");
+test("safeErrorMessage passes through non-empty string errors", () => {
+  assert.equal(safeErrorMessage("string error"), "string error");
+});
+
+test("safeErrorMessage extracts message from plain objects (Supabase/PostgREST)", () => {
+  assert.equal(
+    safeErrorMessage({ message: "row-level security violation", code: "42501" }),
+    "row-level security violation",
+  );
+});
+
+test("safeErrorMessage returns fallback for messageless values", () => {
   assert.equal(safeErrorMessage(42), "An unexpected error occurred");
   assert.equal(safeErrorMessage(null), "An unexpected error occurred");
   assert.equal(safeErrorMessage(undefined), "An unexpected error occurred");
+  assert.equal(safeErrorMessage(""), "An unexpected error occurred");
   assert.equal(safeErrorMessage({ code: 500 }), "An unexpected error occurred");
 });
 
@@ -22,7 +33,7 @@ test("safeErrorMessage returns fallback for Error with empty message", () => {
 
 test("safeErrorMessage accepts custom fallback", () => {
   assert.equal(safeErrorMessage(null, "Payment processing failed"), "Payment processing failed");
-  assert.equal(safeErrorMessage("oops", "Custom fallback"), "Custom fallback");
+  assert.equal(safeErrorMessage({}, "Custom fallback"), "Custom fallback");
 });
 
 test("safeErrorMessage uses custom fallback even for Error with empty message", () => {

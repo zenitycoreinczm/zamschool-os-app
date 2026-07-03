@@ -34,7 +34,7 @@ import { AccountsSetupGuide } from "@/components/admin/AccountsSetupGuide";
 import { AdminPageHero } from "@/components/admin/AdminPageHero";
 import { StaffInvitePanel } from "@/components/admin/StaffInvitePanel";
 import { useWorkspaceContext } from "@/components/WorkspaceContextProvider";
-import { normalizeRole } from "@/lib/roles";
+import { normalizeRole, type KnownRole } from "@/lib/roles";
 
 type TabKey = "students" | "teachers" | "parents";
 type GenericRow = Record<string, any>;

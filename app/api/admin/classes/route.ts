@@ -4,6 +4,7 @@ import { z } from "zod";
 import { applyRateLimit, getClientIp, parseJsonWithSchema, safeErrorMessage } from "@/lib/server-guards";
 import { requireAdminContext } from "@/lib/server-auth";
 import { requireFeatureAccess } from "@/lib/feature-permissions";
+import { auditDomainWrite } from "@/lib/audit-domain";
 import { validateSupervisorAssignment } from "@/lib/teacher-assignment-contract";
 import { buildCreateClassPayload } from "@/lib/class-route-payload.mjs";
 
@@ -46,6 +47,8 @@ export async function POST(req: Request) {
   try {
     const access = await requireAdminContext(req);
     if (!access.ok) return access.response;
+    const perm = await requireFeatureAccess(access.context, "classes", "create");
+    if (!perm.ok) return perm.response;
     const { schoolId } = access.context;
     if (!schoolId) {
       return NextResponse.json({ error: "No school linked to this account" }, { status: 403 });
@@ -89,6 +92,15 @@ export async function POST(req: Request) {
       .single();
 
     if (!error) {
+      await auditDomainWrite({
+        schoolId,
+        userId: access.context.userId,
+        action: "classes.create",
+        entityType: "class",
+        entityId: data.id,
+        newData: data,
+        ipAddress: ip,
+      });
       return NextResponse.json({ success: true, data });
     }
 
@@ -105,6 +117,15 @@ export async function POST(req: Request) {
     });
 
     const legacyResult = await safeInsertWithMissingColumnRetry("classes", legacyPayload);
+    await auditDomainWrite({
+      schoolId,
+      userId: access.context.userId,
+      action: "classes.create",
+      entityType: "class",
+      entityId: legacyResult?.id ?? null,
+      newData: legacyResult,
+      ipAddress: ip,
+    });
     return NextResponse.json({ success: true, data: legacyResult });
   } catch (error: unknown) {
     return NextResponse.json({ error: safeErrorMessage(error, "Failed to create class") }, { status: 500 });
@@ -115,6 +136,8 @@ export async function PUT(req: Request) {
   try {
     const access = await requireAdminContext(req);
     if (!access.ok) return access.response;
+    const perm = await requireFeatureAccess(access.context, "classes", "update");
+    if (!perm.ok) return perm.response;
     const { schoolId } = access.context;
     if (!schoolId) {
       return NextResponse.json({ error: "No school linked to this account" }, { status: 403 });
@@ -146,6 +169,15 @@ export async function PUT(req: Request) {
     }
 
     const result = await safeUpdateClass(body.id, schoolId, payload);
+    await auditDomainWrite({
+      schoolId,
+      userId: access.context.userId,
+      action: "classes.update",
+      entityType: "class",
+      entityId: body.id,
+      newData: result,
+      ipAddress: ip,
+    });
     return NextResponse.json({ success: true, data: result });
   } catch (error: unknown) {
     return NextResponse.json({ error: safeErrorMessage(error, "Failed to update class") }, { status: 500 });
@@ -156,6 +188,8 @@ export async function DELETE(req: Request) {
   try {
     const access = await requireAdminContext(req);
     if (!access.ok) return access.response;
+    const perm = await requireFeatureAccess(access.context, "classes", "delete");
+    if (!perm.ok) return perm.response;
     const { schoolId } = access.context;
     if (!schoolId) {
       return NextResponse.json({ error: "No school linked to this account" }, { status: 403 });
@@ -167,6 +201,14 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "Class ID is required" }, { status: 400 });
     }
 
+    // Capture the row before deleting so the audit trail retains old data.
+    const { data: oldRow } = await supabaseAdmin
+      .from("classes")
+      .select("*")
+      .eq("id", id)
+      .eq("school_id", schoolId)
+      .maybeSingle();
+
     const { error } = await supabaseAdmin
       .from("classes")
       .delete()
@@ -174,6 +216,16 @@ export async function DELETE(req: Request) {
       .eq("school_id", schoolId);
 
     if (error) throw error;
+
+    await auditDomainWrite({
+      schoolId,
+      userId: access.context.userId,
+      action: "classes.delete",
+      entityType: "class",
+      entityId: id,
+      oldData: oldRow ?? null,
+      ipAddress: getClientIp(req),
+    });
 
     return NextResponse.json({ success: true });
   } catch (error: unknown) {

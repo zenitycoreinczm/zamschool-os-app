@@ -86,7 +86,6 @@ export default function RoleBasedShell({
   // Unknown / unmapped role. Log so audits surface the gap instead of
   // silently rendering the admin shell for a role that wasn't accounted for.
   if (typeof window !== "undefined" && role) {
-    // eslint-disable-next-line no-console
     console.warn(`[RoleBasedShell] No shell mapped for role "${role}". Falling back to AdminShell.`);
   }
   return <AdminShell>{children}</AdminShell>;
